@@ -1,7 +1,5 @@
-mod oggopus;
-
 use core::ffi::{c_int, CStr};
-use oggopus::{opus::ChannelMapping, states, Bitstream, BitstreamReader};
+use oggopus_embedded::{opus::ChannelMapping, states, Bitstream, BitstreamReader};
 use opusic_sys::*;
 
 fn get_opus_error_message(error: c_int) -> &'static str {

@@ -11,6 +11,8 @@
  * It does not validate CRC or handle missing packets.
  */
 
+#![no_std]
+
 mod container {
     use bitflags::bitflags;
     use nom::{

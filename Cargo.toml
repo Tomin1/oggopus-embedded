@@ -4,6 +4,5 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-bitflags = "2.8"
+oggopus-embedded = { path = "oggopus-embedded" }
 opusic-sys = "0.5"
-nom = { version = "8", default-features = false }
