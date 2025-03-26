@@ -1,0 +1,10 @@
+#include <opus.h>
+
+/**
+ * Struct big enough to contain OpusDecoder of opus-1.5.2 so it can be reserved
+ * on stack. Alignment is taken care of by libopus.
+ * <div rustbindgen replaces="OpusDecoder"></div>
+ */
+struct OpusDecoder {
+    char _unused[26580];
+};

@@ -1,8 +1,9 @@
 [package]
-name = "opustest"
+name = "example"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+alsa = "0.9.1"
 oggopus-embedded = { path = "oggopus-embedded" }
-opusic-sys = "0.5"
+opus-embedded = { path = "opus-embedded" }

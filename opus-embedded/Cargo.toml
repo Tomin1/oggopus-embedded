@@ -1,0 +1,8 @@
+[package]
+name = "opus-embedded"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+az = "1.2.1"
+opus-embedded-sys = { path = "sys" }

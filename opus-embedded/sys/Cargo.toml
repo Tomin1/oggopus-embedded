@@ -1,0 +1,10 @@
+[package]
+name = "opus-embedded-sys"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+
+[build-dependencies]
+autotools = "0.2"
+bindgen = "0.71.0"

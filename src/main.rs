@@ -1,18 +1,31 @@
-use core::ffi::{c_int, CStr};
+/*
+ * Copyright (c) 2025 Tomi Leppänen
+ *
+ * A simple example player that uses oggopus-embedded and opus-embedded.
+ */
+
+use alsa::{
+    pcm::{Access, Format, HwParams},
+    Direction, ValueOr, PCM,
+};
 use oggopus_embedded::{opus::ChannelMapping, states, Bitstream, BitstreamReader};
-use opusic_sys::*;
+use opus_embedded::Decoder;
 
-fn get_opus_error_message(error: c_int) -> &'static str {
-    let error = unsafe {
-        let error = opus_strerror(error);
-        CStr::from_ptr(error)
-    };
-    error.to_str().unwrap()
-}
+fn main() -> Result<(), Box<dyn core::error::Error>> {
+    let pcm = PCM::new("default", Direction::Playback, false)?;
+    let hwp = HwParams::any(&pcm)?;
+    hwp.set_channels(1)?;
+    hwp.set_rate(16_000, ValueOr::Nearest)?;
+    hwp.set_format(Format::s16())?;
+    hwp.set_access(Access::RWInterleaved)?;
+    pcm.hw_params(&hwp)?;
+    let io = pcm.io_i16()?;
 
-fn main() -> Result<(), Box<dyn core::error::Error + 'static>> {
-    const STREAM: Bitstream = Bitstream::new(include_bytes!("test.ogg"));
-    let reader = BitstreamReader::<'_, '_, states::Beginning>::new(&STREAM);
+    // NB: We cannot have non-static data with BitstreamReader
+    let stream_content = std::fs::read(std::env::args().nth(1).ok_or("Argument missing")?)?.leak();
+
+    let stream: Bitstream = Bitstream::new(stream_content);
+    let reader = BitstreamReader::<'_, '_, states::Beginning>::new(&stream);
     let states::Either::Continued((mut reader, header)) = reader
         .read_header()
         .inspect_err(|err| println!("Failed to read header or comments packet: {err:?}"))?
@@ -20,12 +33,11 @@ fn main() -> Result<(), Box<dyn core::error::Error + 'static>> {
         return Err("Stream ended after header or comments packet".into());
     };
     let channels = match header.channels {
-        ChannelMapping::Family0 { channels } => channels.into(),
-        _ => -1,
+        ChannelMapping::Family0 { channels } => channels,
+        _ => return Err("Unsupported channel mapping family".into()),
     };
 
-    let mut error: c_int = 0;
-    let decoder: *mut OpusDecoder = unsafe { opus_decoder_create(16_000, channels, &mut error) };
+    let mut decoder = Decoder::new(16_000, channels)?;
 
     loop {
         let mut sum = 0;
@@ -34,21 +46,13 @@ fn main() -> Result<(), Box<dyn core::error::Error + 'static>> {
             .inspect_err(|err| println!("Failed to read packets: {err:?}"))?;
 
         while let Some(packet) = packets.next() {
-            let mut output: [i16; 5760] = [0; 5760];
-
-            let samples = unsafe {
-                let len: i32 = packet.data.len().try_into().unwrap();
-                let data = packet.data.as_ptr();
-                let output = output.as_mut_slice().as_mut_ptr();
-                opus_decode(decoder, data, len, output, 5760, 0)
-            };
-            if samples < 0 {
-                println!("Error ({samples}): {}", get_opus_error_message(samples));
-            } else {
-                sum += samples;
-            }
+            let mut output = Vec::default();
+            output.resize(decoder.get_nb_samples(packet.data)?, 0i16);
+            let samples = decoder.decode(packet.data, output.as_mut_slice())?;
+            io.writei(&output[..samples])?;
+            sum += samples;
         }
-        println!("Got {sum} samples");
+        println!("Decoded {sum} samples");
         match new_reader {
             states::Either::Ended(_reader) => {
                 break;
@@ -59,6 +63,5 @@ fn main() -> Result<(), Box<dyn core::error::Error + 'static>> {
         }
     }
 
-    unsafe { opus_decoder_destroy(decoder) };
     Ok(())
 }

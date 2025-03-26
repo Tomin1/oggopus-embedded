@@ -1,0 +1,3 @@
+[submodule "opus-embedded/sys/src/opus"]
+	path = opus-embedded/sys/src/opus
+	url = https://github.com/xiph/opus.git
