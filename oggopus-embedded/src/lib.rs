@@ -689,9 +689,13 @@ pub struct Bitstream<'data> {
     data: &'data [u8],
 }
 
-impl Bitstream<'_> {
-    pub const fn new(data: &[u8]) -> Bitstream {
-        Bitstream { data }
+impl<'data> Bitstream<'data> {
+    pub const fn new(data: &'data [u8]) -> Self {
+        Self { data }
+    }
+
+    pub fn reader<'bs>(&'bs self) -> BitstreamReader<'bs, 'data, states::Beginning> {
+        BitstreamReader::<'bs, 'data, states::Beginning>::new(self)
     }
 }
 
@@ -737,7 +741,7 @@ type EitherPacketsOrEnded<'bs, 'data, const BUFFER_SIZE: usize> = (
     container::Packets<'data, BUFFER_SIZE>,
 );
 
-pub struct BitstreamReader<'bs, 'data, S: ReaderState> {
+pub struct BitstreamReader<'bs, 'data: 'bs, S: ReaderState> {
     bitstream: core::marker::PhantomData<&'bs Bitstream<'data>>,
     remaining: &'data [u8],
     marker: S,

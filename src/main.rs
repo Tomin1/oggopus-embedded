@@ -8,7 +8,7 @@ use alsa::{
     pcm::{Access, Format, HwParams},
     Direction, ValueOr, PCM,
 };
-use oggopus_embedded::{opus::ChannelMapping, states, Bitstream, BitstreamReader};
+use oggopus_embedded::{opus::ChannelMapping, states, Bitstream};
 use opus_embedded::Decoder;
 
 fn main() -> Result<(), Box<dyn core::error::Error>> {
@@ -25,7 +25,7 @@ fn main() -> Result<(), Box<dyn core::error::Error>> {
     let stream_content = std::fs::read(std::env::args().nth(1).ok_or("Argument missing")?)?.leak();
 
     let stream: Bitstream = Bitstream::new(stream_content);
-    let reader = BitstreamReader::<'_, '_, states::Beginning>::new(&stream);
+    let reader = stream.reader();
     let states::Either::Continued((mut reader, header)) = reader
         .read_header()
         .inspect_err(|err| println!("Failed to read header or comments packet: {err:?}"))?
