@@ -853,3 +853,27 @@ impl<'bs, 'data> BitstreamReader<'bs, 'data, InStream> {
         }
     }
 }
+
+impl<'bs, 'data> BitstreamReader<'bs, 'data, EndOfStream> {
+    /*!
+     * Return if there is more data to read
+     */
+    pub fn has_more(&self) -> bool {
+        !self.remaining.is_empty()
+    }
+
+    /**
+     * Get next reader for more data
+     */
+    pub fn next_reader(self) -> Option<BitstreamReader<'bs, 'data, Beginning>> {
+        if self.has_more() {
+            Some(BitstreamReader {
+                bitstream: core::marker::PhantomData::<_>,
+                remaining: self.remaining,
+                marker: Beginning,
+            })
+        } else {
+            None
+        }
+    }
+ }
