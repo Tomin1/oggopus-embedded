@@ -1,5 +1,6 @@
 /*
  * Copyright (c) 2025 Tomi Leppänen
+ * SPDX-License-Identifier: BSD-3-Clause
  *
  * A simple example player that uses oggopus-embedded and opus-embedded.
  */

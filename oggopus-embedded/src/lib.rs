@@ -2,6 +2,7 @@
  * Small no_std and no_alloc ogg parser for mono opus audio
  *
  * Copyright (c) 2025 Tomi Leppänen
+ * SPDX-License-Identifier: BSD-3-Clause
  *
  * https://datatracker.ietf.org/doc/html/rfc3533
  * https://datatracker.ietf.org/doc/html/rfc7845

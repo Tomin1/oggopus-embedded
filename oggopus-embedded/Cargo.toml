@@ -2,6 +2,7 @@
 name = "oggopus-embedded"
 version = "0.1.0"
 edition = "2021"
+license = "BSD-3-Clause"
 
 [dependencies]
 bitflags = "2.8"

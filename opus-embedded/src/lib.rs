@@ -2,6 +2,7 @@
  * Small no_std and no_alloc opus decoder for mono opus audio
  *
  * Copyright (c) 2025 Tomi Leppänen
+ * SPDX-License-Identifier: BSD-3-Clause
  *
  * Uses libopus.
  */

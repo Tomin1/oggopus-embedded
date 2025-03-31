@@ -2,6 +2,7 @@
  * Minimal bindings for opus decoder
  *
  * Copyright (c) 2025 Tomi Leppänen
+ * SPDX-License-Identifier: BSD-3-Clause
  */
 
 #![allow(non_camel_case_types)]

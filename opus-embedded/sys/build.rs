@@ -1,5 +1,6 @@
 /*
  * Copyright (c) 2025 Tomi Leppänen
+ * SPDX-License-Identifier: BSD-3-Clause
  *
  * Builds minimal libopus for decoding with fixed point decoder and no dred.
  */
