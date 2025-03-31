@@ -10,6 +10,7 @@
 
 use az::SaturatingAs;
 use core::ffi::{c_int, CStr};
+use num_enum::{IntoPrimitive, TryFromPrimitive};
 use opus_embedded_sys::*;
 
 /// # Safety
@@ -85,28 +86,57 @@ impl core::error::Error for InvalidPacket {
     }
 }
 
+#[derive(Debug)]
+pub struct InvalidChannels {
+    tried: i32,
+}
+
+impl core::fmt::Display for InvalidChannels {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.write_fmt(format_args!("Invalid number of channels: {}", self.tried))
+    }
+}
+
+impl core::error::Error for InvalidChannels {
+    fn source(&self) -> Option<&(dyn core::error::Error + 'static)> {
+        None
+    }
+}
+
+#[derive(Copy, Clone, Debug, Eq, PartialEq, IntoPrimitive, TryFromPrimitive)]
+#[repr(u8)]
+pub enum Channels {
+    Mono = 1,
+    Stereo = 2,
+}
+
+impl Channels {
+    pub fn channels(&self) -> u8 {
+        match self {
+            Self::Mono => 1,
+            Self::Stereo => 2,
+        }
+    }
+}
+
 pub struct Decoder {
     decoder: OpusDecoder,
 }
 
 impl Decoder {
-    pub fn new(freq: i32, channels: u8) -> Result<Self, DecoderError> {
-        if channels != 1 && channels != 2 {
-            return Err(DecoderError {
-                error_code: OPUS_BAD_ARG,
-            });
-        }
-        // SAFETY: Number of channels was checked to be one or two
+    pub fn new(freq: i32, channels: Channels) -> Result<Self, DecoderError> {
+        let channels = channels.channels().into();
         let mut decoder = Decoder {
             decoder: OpusDecoder::default(),
         };
-        let size = unsafe { opus_decoder_get_size(channels.into()) };
+        // SAFETY: The number of channels can be only one or two as required
+        let size = unsafe { opus_decoder_get_size(channels) };
         assert!(
             core::mem::size_of::<OpusDecoder>() >= size.try_into().unwrap(),
             "OpusDecoder struct is too small!"
         );
         // SAFETY: decoder.decoder points to a correct sized chunk of memory
-        let error_code = unsafe { opus_decoder_init(&mut decoder.decoder, freq, channels.into()) };
+        let error_code = unsafe { opus_decoder_init(&mut decoder.decoder, freq, channels) };
         // PANIC: All error codes are small integers
         if error_code != OPUS_OK.try_into().unwrap() {
             Err(DecoderError { error_code })
@@ -248,7 +278,7 @@ mod tests {
 
     #[test]
     fn create_decoder() {
-        let decoder = Decoder::new(8_000, 1);
+        let decoder = Decoder::new(8_000, Channels::Stereo);
         assert!(decoder.is_ok());
     }
 }

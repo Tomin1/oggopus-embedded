@@ -9,7 +9,7 @@ use alsa::{
     Direction, ValueOr, PCM,
 };
 use oggopus_embedded::{opus::ChannelMapping, states, Bitstream};
-use opus_embedded::Decoder;
+use opus_embedded::{Channels, Decoder};
 
 fn main() -> Result<(), Box<dyn core::error::Error>> {
     let pcm = PCM::new("default", Direction::Playback, false)?;
@@ -42,8 +42,9 @@ fn main() -> Result<(), Box<dyn core::error::Error>> {
     swp.set_start_threshold(hwp.get_buffer_size()?)?;
     pcm.sw_params(&swp)?;
     let sample_rate = hwp.get_rate()?;
+    let channels = Channels::try_from(channels).unwrap();
 
-    println!("Playing in {} at rate of {}", if channels == 1 { "mono" } else { "stereo" }, sample_rate);
+    println!("Playing in {:?} at rate of {}", channels, sample_rate);
 
     let mut decoder = Decoder::new(sample_rate.try_into()?, channels)?;
     let mut output = Vec::default();
@@ -57,7 +58,7 @@ fn main() -> Result<(), Box<dyn core::error::Error>> {
 
         while let Some(packet) = packets.next() {
             output.resize(
-                decoder.get_nb_samples(packet.data)? * usize::from(channels),
+                decoder.get_nb_samples(packet.data)? * usize::from(u8::from(channels)),
                 0i16,
             );
             let samples = decoder.decode(packet.data, output.as_mut_slice())?;
@@ -79,6 +80,7 @@ fn main() -> Result<(), Box<dyn core::error::Error>> {
                     println!("New stream started");
                     match header.channels {
                         ChannelMapping::Family0 { channels } => {
+                            let channels = Channels::try_from(channels).unwrap();
                             decoder = Decoder::new(sample_rate.try_into()?, channels)?;
                         }
                         _ => return Err("Unsupported channel mapping family".into()),
