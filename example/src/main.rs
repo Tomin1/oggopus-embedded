@@ -9,7 +9,7 @@ use alsa::{
     Direction, ValueOr, PCM,
 };
 use oggopus_embedded::{opus::ChannelMapping, states, Bitstream};
-use opus_embedded::{Channels, Decoder};
+use opus_embedded::{Channels, Decoder, SamplingRate};
 
 fn main() -> Result<(), Box<dyn core::error::Error>> {
     let pcm = PCM::new("default", Direction::Playback, false)?;
@@ -46,9 +46,14 @@ fn main() -> Result<(), Box<dyn core::error::Error>> {
 
     println!("Playing in {:?} at rate of {}", channels, sample_rate);
 
-    let mut decoder = Decoder::new(sample_rate.try_into()?, channels)?;
+    let sample_rate = SamplingRate::closest(sample_rate.try_into().unwrap());
+    let mut decoder = Decoder::new(sample_rate, channels)?;
     let mut output = Vec::default();
     let mut total = 0;
+
+    if i32::from(sample_rate) != hwp.get_rate()?.try_into().unwrap() {
+        return Err("Could not set matching sampling rate".into());
+    }
 
     loop {
         let mut sum = 0;
@@ -81,7 +86,7 @@ fn main() -> Result<(), Box<dyn core::error::Error>> {
                     match header.channels {
                         ChannelMapping::Family0 { channels } => {
                             let channels = Channels::try_from(channels).unwrap();
-                            decoder = Decoder::new(sample_rate.try_into()?, channels)?;
+                            decoder = Decoder::new(sample_rate, channels)?;
                         }
                         _ => return Err("Unsupported channel mapping family".into()),
                     };

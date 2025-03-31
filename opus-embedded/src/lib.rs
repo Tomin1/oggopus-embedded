@@ -123,8 +123,35 @@ pub struct Decoder {
     decoder: OpusDecoder,
 }
 
+#[derive(Copy, Clone, Debug, Eq, PartialEq, IntoPrimitive, TryFromPrimitive)]
+#[repr(i32)]
+pub enum SamplingRate {
+    F8k = 8000,
+    F12k = 12000,
+    F16k = 16000,
+    F24k = 24000,
+    F48k = 48000,
+}
+
+impl SamplingRate {
+    pub fn closest(value: i32) -> Self {
+        use SamplingRate::*;
+        if value <= F8k.into() {
+            F8k
+        } else if value <= F12k.into() {
+            F12k
+        } else if value <= F16k.into() {
+            F16k
+        } else if value <= F24k.into() {
+            F24k
+        } else {
+            F48k
+        }
+    }
+}
+
 impl Decoder {
-    pub fn new(freq: i32, channels: Channels) -> Result<Self, DecoderError> {
+    pub fn new(freq: SamplingRate, channels: Channels) -> Result<Self, DecoderError> {
         let channels = channels.channels().into();
         let mut decoder = Decoder {
             decoder: OpusDecoder::default(),
@@ -136,7 +163,7 @@ impl Decoder {
             "OpusDecoder struct is too small!"
         );
         // SAFETY: decoder.decoder points to a correct sized chunk of memory
-        let error_code = unsafe { opus_decoder_init(&mut decoder.decoder, freq, channels) };
+        let error_code = unsafe { opus_decoder_init(&mut decoder.decoder, freq.into(), channels) };
         // PANIC: All error codes are small integers
         if error_code != OPUS_OK.try_into().unwrap() {
             Err(DecoderError { error_code })
@@ -278,7 +305,16 @@ mod tests {
 
     #[test]
     fn create_decoder() {
-        let decoder = Decoder::new(8_000, Channels::Stereo);
+        let decoder = Decoder::new(SamplingRate::F8k, Channels::Stereo);
         assert!(decoder.is_ok());
+    }
+
+    #[test]
+    fn sampling_rate() {
+        assert_eq!(SamplingRate::closest(8_000), SamplingRate::F8k);
+        assert_eq!(SamplingRate::closest(12_000), SamplingRate::F12k);
+        assert_eq!(SamplingRate::closest(16_000), SamplingRate::F16k);
+        assert_eq!(SamplingRate::closest(24_000), SamplingRate::F24k);
+        assert_eq!(SamplingRate::closest(48_000), SamplingRate::F48k);
     }
 }
