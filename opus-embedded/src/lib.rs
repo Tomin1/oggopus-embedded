@@ -12,17 +12,25 @@ use az::SaturatingAs;
 use core::ffi::{c_int, CStr};
 use opus_embedded_sys::*;
 
-#[derive(Debug)]
-pub struct DecoderError {
-    error_code: c_int,
+/// # Safety
+///
+/// The implementation of numeric must return a valid error code defined by libopus.
+unsafe trait RawOpusError {
+    /**
+     * Returns valid numeric error code defined by libopus
+     */
+    fn numeric(&self) -> c_int;
 }
 
-impl DecoderError {
-    pub fn message(&self) -> &'static str {
-        // SAFETY: DecoderError has been created by us, so it has a valid error_code and null value
-        // is handled
+pub trait OpusError {
+    fn message(&self) -> &'static str;
+}
+
+impl<E: RawOpusError> OpusError for E {
+    fn message(&self) -> &'static str {
+        // SAFETY: OpusError::numeric() returns valid error code and null value is handled
         let error = unsafe {
-            let error = opus_strerror(self.error_code);
+            let error = opus_strerror(self.numeric());
             if error.is_null() {
                 return "Unknown error";
             }
@@ -30,8 +38,16 @@ impl DecoderError {
         };
         error.to_str().unwrap()
     }
+}
 
-    pub fn numeric(&self) -> i32 {
+#[derive(Debug)]
+pub struct DecoderError {
+    error_code: c_int,
+}
+
+unsafe impl RawOpusError for DecoderError {
+    fn numeric(&self) -> c_int {
+        // SAFETY: This error code was given by libopus and we trust that it is correct
         self.error_code
     }
 }
@@ -48,16 +64,38 @@ impl core::error::Error for DecoderError {
     }
 }
 
+#[derive(Debug)]
+pub struct InvalidPacket {}
+
+unsafe impl RawOpusError for InvalidPacket {
+    fn numeric(&self) -> c_int {
+        OPUS_INVALID_PACKET
+    }
+}
+
+impl core::fmt::Display for InvalidPacket {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.write_str(self.message())
+    }
+}
+
+impl core::error::Error for InvalidPacket {
+    fn source(&self) -> Option<&(dyn core::error::Error + 'static)> {
+        None
+    }
+}
+
 pub struct Decoder {
     decoder: OpusDecoder,
 }
 
 impl Decoder {
     pub fn new(freq: i32, channels: u8) -> Result<Self, DecoderError> {
-        assert!(
-            channels != 1 || channels != 2,
-            "The number of channels must be 1 or 2"
-        );
+        if channels != 1 && channels != 2 {
+            return Err(DecoderError {
+                error_code: OPUS_BAD_ARG,
+            });
+        }
         // SAFETY: Number of channels was checked to be one or two
         let mut decoder = Decoder {
             decoder: OpusDecoder::default(),
@@ -69,7 +107,7 @@ impl Decoder {
         );
         // SAFETY: decoder.decoder points to a correct sized chunk of memory
         let error_code = unsafe { opus_decoder_init(&mut decoder.decoder, freq, channels.into()) };
-        // PANIC: All error codes are small positive integers
+        // PANIC: All error codes are small integers
         if error_code != OPUS_OK.try_into().unwrap() {
             Err(DecoderError { error_code })
         } else {
@@ -77,17 +115,15 @@ impl Decoder {
         }
     }
 
-    pub fn get_nb_samples(&self, data: &[u8]) -> Result<usize, DecoderError> {
-        // SAFETY: Lengths is derived from input arrays
+    pub fn get_nb_samples(&self, data: &[u8]) -> Result<usize, InvalidPacket> {
+        // SAFETY: Length is derived from input arrays
         let samples = unsafe {
             let len = data.len().try_into().unwrap();
             let data = data.as_ptr();
             opus_decoder_get_nb_samples(&self.decoder, data, len)
         };
         if samples < 0 {
-            Err(DecoderError {
-                error_code: samples,
-            })
+            Err(InvalidPacket {})
         } else {
             Ok(samples.saturating_as())
         }
@@ -113,6 +149,93 @@ impl Decoder {
             Err(DecoderError {
                 error_code: samples,
             })
+        } else {
+            Ok(samples.saturating_as())
+        }
+    }
+}
+
+#[derive(Copy, Clone, Debug)]
+pub enum Bandwidth {
+    Narrowband,
+    Mediumband,
+    Wideband,
+    Superwideband,
+    Fullband,
+}
+
+pub struct OpusPacket<'data> {
+    data: &'data [u8],
+}
+
+impl<'data> OpusPacket<'data> {
+    pub fn new(data: &'data [u8]) -> Self {
+        Self { data }
+    }
+
+    pub fn get_nb_channels(&self) -> Result<u8, InvalidPacket> {
+        // SAFETY: Raw data, libopus can deal with it
+        let channels = unsafe {
+            let data = self.data.as_ptr();
+            opus_packet_get_nb_channels(data)
+        };
+        if channels < 0 {
+            debug_assert!(channels == OPUS_INVALID_PACKET);
+            Err(InvalidPacket {})
+        } else {
+            Ok(channels.saturating_as())
+        }
+    }
+
+    pub fn get_nb_frames(&self) -> Result<u32, InvalidPacket> {
+        // SAFETY: Length is derived from input array
+        let frames = unsafe {
+            let len = self.data.len().try_into().unwrap();
+            let data = self.data.as_ptr();
+            opus_packet_get_nb_frames(data, len)
+        };
+        if frames < 0 {
+            debug_assert!(frames == OPUS_INVALID_PACKET);
+            Err(InvalidPacket {})
+        } else {
+            Ok(frames.saturating_as())
+        }
+    }
+
+    pub fn get_bandwidth(&self) -> Result<Bandwidth, InvalidPacket> {
+        // SAFETY: Raw data, libopus can deal with it
+        let bandwidth = unsafe {
+            let data = self.data.as_ptr();
+            opus_packet_get_bandwidth(data)
+        };
+        if bandwidth < 0 {
+            debug_assert!(bandwidth == OPUS_INVALID_PACKET);
+            Err(InvalidPacket {})
+        } else {
+            use Bandwidth::*;
+            // PANIC: All bandwidth values are small positive integers
+            #[allow(non_snake_case)]
+            Ok(match bandwidth.try_into().unwrap() {
+                OPUS_BANDWIDTH_NARROWBAND => Narrowband,
+                OPUS_BANDWIDTH_MEDIUMBAND => Mediumband,
+                OPUS_BANDWIDTH_WIDEBAND => Wideband,
+                OPUS_BANDWIDTH_SUPERWIDEBAND => Superwideband,
+                OPUS_BANDWIDTH_FULLBAND => Fullband,
+                _ => panic!("Invalid bandwidth value returned by libopus"),
+            })
+        }
+    }
+
+    pub fn get_samples_per_frame(&self) -> Result<u32, InvalidPacket> {
+        // SAFETY: Length is derived from input array
+        let samples = unsafe {
+            let len = self.data.len().try_into().unwrap();
+            let data = self.data.as_ptr();
+            opus_packet_get_samples_per_frame(data, len)
+        };
+        if samples < 0 {
+            debug_assert!(samples == OPUS_INVALID_PACKET);
+            Err(InvalidPacket {})
         } else {
             Ok(samples.saturating_as())
         }
