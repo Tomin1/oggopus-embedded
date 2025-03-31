@@ -11,10 +11,11 @@
  * It does not validate CRC or handle missing packets.
  */
 
-#![no_std]
+#![cfg_attr(not(test), no_std)]
 
 mod container {
     use bitflags::bitflags;
+    use core::num::NonZeroUsize;
     use nom::{
         bytes::complete::{tag, take},
         error::ErrorKind,
@@ -31,25 +32,32 @@ mod container {
     }
 
     #[derive(Debug)]
-    pub enum OggError<'data> {
+    pub enum OggError {
         UnsupportedVersion(u8),
-        ParsingError(nom::Err<(&'data [u8], ErrorKind)>),
+        ParsingError(ErrorKind),
+        EndOfStreamError(Option<NonZeroUsize>),
         InvalidStream(&'static str),
         UnsupportedStream(&'static str),
         NotOggStream,
         BufferTooSmallError(usize, usize),
     }
 
-    impl core::fmt::Display for OggError<'_> {
+    impl core::fmt::Display for OggError {
         fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
             use OggError::*;
             match self {
                 UnsupportedVersion(version) => {
                     f.write_fmt(format_args!("unsupported Ogg version: {}", version))?
                 }
-                ParsingError(error) => {
-                    f.write_fmt(format_args!("parsing error with Ogg: {}", error))?
-                }
+                ParsingError(kind) => f.write_fmt(format_args!(
+                    "parsing error with Ogg: {}",
+                    kind.description()
+                ))?,
+                EndOfStreamError(Some(size)) => f.write_fmt(format_args!(
+                    "Ogg stream ended abruptly with {} more bytes needed",
+                    size
+                ))?,
+                EndOfStreamError(None) => f.write_fmt(format_args!("Ogg stream ended abruptly"))?,
                 InvalidStream(issue) => {
                     f.write_fmt(format_args!("invalid Ogg stream: {}", issue))?
                 }
@@ -66,37 +74,25 @@ mod container {
         }
     }
 
-    impl core::error::Error for OggError<'_> {
+    impl core::error::Error for OggError {
         fn source(&self) -> Option<&(dyn core::error::Error + 'static)> {
-            None // TODO: Could we return Some for ParsingError anyway?
+            None
         }
     }
 
-    impl<'data> From<nom::Err<(&'data [u8], ErrorKind)>> for OggError<'data> {
-        fn from(error: nom::Err<(&'data [u8], ErrorKind)>) -> OggError<'data> {
-            Self::ParsingError(error)
-        }
-    }
-
-    impl OggError<'_> {
-        pub fn with_data(self, data: &[u8]) -> OggError<'_> {
+    impl<'data> From<nom::Err<(&'data [u8], ErrorKind)>> for OggError {
+        fn from(error: nom::Err<(&'data [u8], ErrorKind)>) -> OggError {
             use OggError::*;
-            match self {
-                ParsingError(err) => match err {
-                    nom::Err::Failure((_, kind)) => ParsingError(nom::Err::Failure((data, kind))),
-                    nom::Err::Error((_, kind)) => ParsingError(nom::Err::Error((data, kind))),
-                    nom::Err::Incomplete(needed) => ParsingError(nom::Err::Incomplete(needed)),
-                },
-                UnsupportedVersion(version) => UnsupportedVersion(version),
-                InvalidStream(error) => InvalidStream(error),
-                UnsupportedStream(error) => UnsupportedStream(error),
-                NotOggStream => NotOggStream,
-                BufferTooSmallError(got, needed) => BufferTooSmallError(got, needed),
+            match error {
+                nom::Err::Failure((_, kind)) => ParsingError(kind),
+                nom::Err::Error((_, kind)) => ParsingError(kind),
+                nom::Err::Incomplete(nom::Needed::Size(size)) => EndOfStreamError(Some(size)),
+                nom::Err::Incomplete(nom::Needed::Unknown) => EndOfStreamError(None),
             }
         }
     }
 
-    pub type Result<'data, O> = core::result::Result<(&'data [u8], O), OggError<'data>>;
+    pub type Result<'data, O> = core::result::Result<(&'data [u8], O), OggError>;
 
     struct Segment {
         before: usize,
@@ -501,20 +497,32 @@ mod container {
 }
 
 pub mod opus {
+    use core::num::NonZeroUsize;
     use nom::{bytes::complete::tag, error::ErrorKind, number, Parser};
 
     #[derive(Debug)]
-    pub enum OpusError<'data> {
-        ParsingError(nom::Err<(&'data [u8], ErrorKind)>),
+    pub enum OpusError {
+        ParsingError(ErrorKind),
+        EndOfStreamError(Option<NonZeroUsize>),
         InvalidStream(&'static str),
         NotOpusStream,
     }
 
-    impl core::fmt::Display for OpusError<'_> {
+    impl core::fmt::Display for OpusError {
         fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
             use OpusError::*;
             match self {
-                ParsingError(error) => f.write_fmt(format_args!("parsing error: {}", error))?,
+                ParsingError(kind) => f.write_fmt(format_args!(
+                    "parsing error with Opus: {}",
+                    kind.description()
+                ))?,
+                EndOfStreamError(Some(size)) => f.write_fmt(format_args!(
+                    "Opus stream ended abruptly with {} more bytes needed",
+                    size
+                ))?,
+                EndOfStreamError(None) => {
+                    f.write_fmt(format_args!("Opus stream ended abruptly"))?
+                }
                 InvalidStream(issue) => f.write_fmt(format_args!("invalid stream: {}", issue))?,
                 NotOpusStream => f.write_str("this is not and Opus stream")?,
             };
@@ -522,34 +530,25 @@ pub mod opus {
         }
     }
 
-    impl OpusError<'_> {
-        pub fn with_data(self, data: &[u8]) -> OpusError<'_> {
+    impl core::error::Error for OpusError {
+        fn source(&self) -> Option<&(dyn core::error::Error + 'static)> {
+            None
+        }
+    }
+
+    impl<'data> From<nom::Err<(&'data [u8], ErrorKind)>> for OpusError {
+        fn from(error: nom::Err<(&'data [u8], ErrorKind)>) -> OpusError {
             use OpusError::*;
-            match self {
-                ParsingError(err) => match err {
-                    nom::Err::Failure((_, kind)) => ParsingError(nom::Err::Failure((data, kind))),
-                    nom::Err::Error((_, kind)) => ParsingError(nom::Err::Error((data, kind))),
-                    nom::Err::Incomplete(needed) => ParsingError(nom::Err::Incomplete(needed)),
-                },
-                InvalidStream(error) => InvalidStream(error),
-                NotOpusStream => NotOpusStream,
+            match error {
+                nom::Err::Failure((_, kind)) => ParsingError(kind),
+                nom::Err::Error((_, kind)) => ParsingError(kind),
+                nom::Err::Incomplete(nom::Needed::Size(size)) => EndOfStreamError(Some(size)),
+                nom::Err::Incomplete(nom::Needed::Unknown) => EndOfStreamError(None),
             }
         }
     }
 
-    impl core::error::Error for OpusError<'_> {
-        fn source(&self) -> Option<&(dyn core::error::Error + 'static)> {
-            None // TODO: Could we return Some for ParsingError anyway?
-        }
-    }
-
-    impl<'data> From<nom::Err<(&'data [u8], ErrorKind)>> for OpusError<'data> {
-        fn from(error: nom::Err<(&'data [u8], ErrorKind)>) -> OpusError<'data> {
-            Self::ParsingError(error)
-        }
-    }
-
-    pub type Result<'data, O> = core::result::Result<O, OpusError<'data>>;
+    pub type Result<'data, O> = core::result::Result<O, OpusError>;
 
     pub enum ChannelMapping {
         Family0 { channels: u8 },
@@ -631,16 +630,16 @@ pub mod opus {
 }
 
 #[derive(Debug)]
-pub enum BitstreamError<'data> {
-    OggError(container::OggError<'data>),
-    OpusError(opus::OpusError<'data>),
+pub enum BitstreamError {
+    OggError(container::OggError),
+    OpusError(opus::OpusError),
     InvalidOggStream(&'static str),
     InvalidOpusStream(&'static str),
     UnsupportedOpusVersion(u8),
     UnsupportedStream(&'static str),
 }
 
-impl core::fmt::Display for BitstreamError<'_> {
+impl core::fmt::Display for BitstreamError {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         use BitstreamError::*;
         match self {
@@ -656,7 +655,7 @@ impl core::fmt::Display for BitstreamError<'_> {
     }
 }
 
-impl core::error::Error for BitstreamError<'static> {
+impl core::error::Error for BitstreamError {
     fn source(&self) -> Option<&(dyn core::error::Error + 'static)> {
         use BitstreamError::*;
         match self {
@@ -667,8 +666,8 @@ impl core::error::Error for BitstreamError<'static> {
     }
 }
 
-impl<'data> From<container::OggError<'data>> for BitstreamError<'data> {
-    fn from(error: container::OggError<'data>) -> BitstreamError<'data> {
+impl From<container::OggError> for BitstreamError {
+    fn from(error: container::OggError) -> BitstreamError {
         if let container::OggError::UnsupportedStream(error) = error {
             Self::UnsupportedStream(error)
         } else {
@@ -677,13 +676,13 @@ impl<'data> From<container::OggError<'data>> for BitstreamError<'data> {
     }
 }
 
-impl<'data> From<opus::OpusError<'data>> for BitstreamError<'data> {
-    fn from(error: opus::OpusError<'data>) -> BitstreamError<'data> {
+impl From<opus::OpusError> for BitstreamError {
+    fn from(error: opus::OpusError) -> BitstreamError {
         Self::OpusError(error)
     }
 }
 
-pub type Result<'data, T> = core::result::Result<T, BitstreamError<'data>>;
+pub type Result<'data, T> = core::result::Result<T, BitstreamError>;
 
 pub struct Bitstream<'data> {
     data: &'data [u8],
@@ -779,8 +778,7 @@ impl<'bs, 'data> BitstreamReader<'bs, 'data, Beginning> {
             ));
         }
         if let Some(packet) = packets.next() {
-            let header = opus::OpusHeader::parse(packet.data)
-                .map_err(|err| err.with_data(self.remaining))?;
+            let header = opus::OpusHeader::parse(packet.data)?;
             if header.version > 15 {
                 return Err(UnsupportedOpusVersion(header.version));
             }
@@ -876,4 +874,4 @@ impl<'bs, 'data> BitstreamReader<'bs, 'data, EndOfStream> {
             None
         }
     }
- }
+}
