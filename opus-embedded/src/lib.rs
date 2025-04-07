@@ -1,22 +1,26 @@
-/*!
- * Small no_std and no_alloc opus decoder for mono opus audio
- *
+/*
  * Copyright (c) 2025 Tomi Leppänen
  * SPDX-License-Identifier: BSD-3-Clause
+ */
+/*!
+ * Small no_std and no_alloc opus decoder for opus audio.
  *
  * Uses libopus.
  */
 
 #![no_std]
+#![deny(missing_docs)]
 
 use az::SaturatingAs;
 use core::ffi::{c_int, CStr};
 use num_enum::{IntoPrimitive, TryFromPrimitive};
 use opus_embedded_sys::*;
 
-/// # Safety
-///
-/// The implementation of numeric must return a valid error code defined by libopus.
+/**
+ * # Safety
+ *
+ * The implementation of numeric must return a valid error code defined by libopus.
+ */
 unsafe trait RawOpusError {
     /**
      * Returns valid numeric error code defined by libopus
@@ -24,7 +28,9 @@ unsafe trait RawOpusError {
     fn numeric(&self) -> c_int;
 }
 
+/// Error from parsing opus data.
 pub trait OpusError {
+    /// Returns the error message as it is defined by libopus.
     fn message(&self) -> &'static str;
 }
 
@@ -42,6 +48,7 @@ impl<E: RawOpusError> OpusError for E {
     }
 }
 
+/// Error from decoding opus data.
 #[derive(Debug)]
 pub struct DecoderError {
     error_code: c_int,
@@ -66,6 +73,7 @@ impl core::error::Error for DecoderError {
     }
 }
 
+/// Invalid opus data packet encountered.
 #[derive(Debug)]
 pub struct InvalidPacket {}
 
@@ -87,31 +95,18 @@ impl core::error::Error for InvalidPacket {
     }
 }
 
-#[derive(Debug)]
-pub struct InvalidChannels {
-    tried: i32,
-}
-
-impl core::fmt::Display for InvalidChannels {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        f.write_fmt(format_args!("Invalid number of channels: {}", self.tried))
-    }
-}
-
-impl core::error::Error for InvalidChannels {
-    fn source(&self) -> Option<&(dyn core::error::Error + 'static)> {
-        None
-    }
-}
-
+/// Number of channels in this opus packet.
 #[derive(Copy, Clone, Debug, Eq, PartialEq, IntoPrimitive, TryFromPrimitive)]
 #[repr(u8)]
 pub enum Channels {
+    /// Opus packet contains mono audio.
     Mono = 1,
+    /// Opus packet contains stereo audio. Samples are interleaved.
     Stereo = 2,
 }
 
 impl Channels {
+    /// Return the number of channels.
     pub fn channels(&self) -> u8 {
         match self {
             Self::Mono => 1,
@@ -120,21 +115,33 @@ impl Channels {
     }
 }
 
+/// Opus decoder.
 pub struct Decoder {
     decoder: OpusDecoder,
 }
 
+/**
+ * Sampling rate.
+ *
+ * Only valid sampling rates can be presented.
+ */
 #[derive(Copy, Clone, Debug, Eq, PartialEq, IntoPrimitive, TryFromPrimitive)]
 #[repr(i32)]
 pub enum SamplingRate {
+    /// 8 kHz sampling rate.
     F8k = 8000,
+    /// 12 kHz sampling rate.
     F12k = 12000,
+    /// 16 kHz sampling rate.
     F16k = 16000,
+    /// 24 kHz sampling rate.
     F24k = 24000,
+    /// 48 kHz sampling rate.
     F48k = 48000,
 }
 
 impl SamplingRate {
+    /// Creates sampling rate that is the same or higher than the requested value up to 48 kHz.
     pub fn closest(value: i32) -> Self {
         use SamplingRate::*;
         if value <= F8k.into() {
@@ -152,6 +159,7 @@ impl SamplingRate {
 }
 
 impl Decoder {
+    /// Construct decoder from requested sampling rate and number of channels.
     pub fn new(freq: SamplingRate, channels: Channels) -> Result<Self, DecoderError> {
         let channels = channels.channels().into();
         let mut decoder = Decoder {
@@ -173,6 +181,11 @@ impl Decoder {
         }
     }
 
+    /**
+     * Return the number of samples in the opus data.
+     *
+     * This value can be used for allocating an output buffer for decoding.
+     */
     pub fn get_nb_samples(&self, data: &[u8]) -> Result<usize, InvalidPacket> {
         // SAFETY: Length is derived from input arrays
         let samples = unsafe {
@@ -187,6 +200,11 @@ impl Decoder {
         }
     }
 
+    /**
+     * Decode opus packet from data into output buffer.
+     *
+     * Returns the number of decoded samples in the output buffer.
+     */
     pub fn decode(&mut self, data: &[u8], output: &mut [i16]) -> Result<usize, DecoderError> {
         // SAFETY: All lengths are derived from input arrays
         let samples = unsafe {
@@ -213,24 +231,37 @@ impl Decoder {
     }
 }
 
+/// Bandwidth in the opus data.
 #[derive(Copy, Clone, Debug)]
 pub enum Bandwidth {
+    /// Narrowband data (4 kHz bandpass).
     Narrowband,
+    /// Mediumband data (6 kHz bandpass).
     Mediumband,
+    /// Wideband data (8 kHz bandpass).
     Wideband,
+    /// Superwideband data (12 kHz bandpass).
     Superwideband,
+    /// Fullband data (20 kHz bandpass).
     Fullband,
 }
 
+/// Wraps opus data into a packet type.
 pub struct OpusPacket<'data> {
     data: &'data [u8],
 }
 
 impl<'data> OpusPacket<'data> {
+    /**
+     * Construct packet from data.
+     *
+     * Does not check for validity.
+     */
     pub fn new(data: &'data [u8]) -> Self {
         Self { data }
     }
 
+    /// Return the number of channels for the packet.
     pub fn get_nb_channels(&self) -> Result<u8, InvalidPacket> {
         // SAFETY: Raw data, libopus can deal with it
         let channels = unsafe {
@@ -245,6 +276,7 @@ impl<'data> OpusPacket<'data> {
         }
     }
 
+    /// Return the number of frames for the packet.
     pub fn get_nb_frames(&self) -> Result<u32, InvalidPacket> {
         // SAFETY: Length is derived from input array
         let frames = unsafe {
@@ -260,6 +292,7 @@ impl<'data> OpusPacket<'data> {
         }
     }
 
+    /// Return the bandwidth of the packet.
     pub fn get_bandwidth(&self) -> Result<Bandwidth, InvalidPacket> {
         // SAFETY: Raw data, libopus can deal with it
         let bandwidth = unsafe {
@@ -284,6 +317,7 @@ impl<'data> OpusPacket<'data> {
         }
     }
 
+    /// Return the number of sampels per frame in the packet.
     pub fn get_samples_per_frame(&self) -> Result<u32, InvalidPacket> {
         // SAFETY: Length is derived from input array
         let samples = unsafe {
