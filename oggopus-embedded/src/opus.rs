@@ -1,18 +1,24 @@
 /*
- * Opus parsing code.
- *
  * Copyright (c) 2025 Tomi Leppänen
  * SPDX-License-Identifier: BSD-3-Clause
+ */
+/*!
+ * Opus parsing code.
  */
 
 use core::num::NonZeroUsize;
 use nom::{bytes::complete::tag, error::ErrorKind, number, Parser};
 
+/// Errors from parsing opus data.
 #[derive(Debug, PartialEq)]
 pub enum OpusError {
+    /// Parsing error from nom library.
     ParsingError(ErrorKind),
+    /// Stream ended abruptly.
     EndOfStreamError(Option<NonZeroUsize>),
+    /// Stream was not a valid opus stream.
     InvalidStream(&'static str),
+    /// Stream is not an opus stream but something else.
     NotOpusStream,
 }
 
@@ -54,26 +60,69 @@ impl<'data> From<nom::Err<(&'data [u8], ErrorKind)>> for OpusError {
     }
 }
 
+/// Result for opus parsing errors.
 pub type Result<'data, O> = core::result::Result<O, OpusError>;
 
+/// Channel mapping of opus stream.
 #[derive(Debug, PartialEq)]
 pub enum ChannelMapping {
-    Family0 { channels: u8 },
-    Family1 { channels: u8 }, // TODO: Add the table
+    /**
+     * Family 0 channel mapping.
+     *
+     * Supports mono and stereo audio.
+     */
+    Family0 {
+        /// The number of channels, which can be 1 (mono) or 2 (stereo).
+        channels: u8,
+    },
+    /**
+     * Family 1 channel mapping.
+     *
+     * This is missing channel mapping table member.
+     *
+     * Currently not supported.
+     */
+    Family1 {
+        // TODO: Add the table
+        /// The number of channels, which can be between 1 and 8.
+        channels: u8,
+    },
+    /**
+     * Family 255 channel mapping.
+     *
+     * Currently not supported.
+     */
     Family255,
+    /**
+     * Reserved channel mapping value was used in the stream.
+     *
+     * Currently not supported.
+     */
     Reserved,
 }
 
+/// Opus header data.
 #[derive(Debug, PartialEq)]
 pub struct OpusHeader {
+    /// Opus version.
     pub version: u8,
+    /// Channel mapping.
     pub channels: ChannelMapping,
+    /// The number of samples to skip in the beginning of the stream.
     pub pre_skip: u16,
+    /// Sample rate used for the original audio.
     pub sample_rate: u32,
+    /// Output gain.
     pub output_gain: u16,
 }
 
 impl OpusHeader {
+    /**
+     * Parse opus header from input data.
+     *
+     * # Panics
+     * Will panic when unsupported channel mapping is encountered.
+     */
     pub fn parse(input: &[u8]) -> Result<Self> {
         use OpusError::*;
         let (input, _) = tag(b"OpusHead".as_slice())(input)

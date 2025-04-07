@@ -1,29 +1,48 @@
 /*
- * Small no_std and no_alloc ogg parser for mono opus audio
- *
  * Copyright (c) 2025 Tomi Leppänen
  * SPDX-License-Identifier: BSD-3-Clause
+ */
+/*!
+ * Small no_std and no_alloc ogg parser for mono and stereo opus audio.
  *
- * https://datatracker.ietf.org/doc/html/rfc3533
- * https://datatracker.ietf.org/doc/html/rfc7845
+ * While this tries to follow the RFCs to the maximum extent reasonable, this is not suitable as
+ * general purpose ogg opus parser and you should never use this for untrusted inputs. This was
+ * built for parsing opus data from internal flash as part of an embedded system. You will want to
+ * use something else for anything more powerful than that.
  *
- * Supports only one logical stream of opus audio.
- * This parses ID header and ignores comment header.
- * It does not validate CRC or handle missing packets.
+ * See also [RFC3533](https://datatracker.ietf.org/doc/html/rfc3533)
+ * and [RFC7845](https://datatracker.ietf.org/doc/html/rfc7845).
+ *
+ * # Limitations
+ * - Supports only one logical stream of opus audio.
+ * - Supports only Family 0 channel mappings.
+ * - Supports only ogg files with a single stream at a time.
+ * - Mixing other types of streams is not supported.
+ * - This parses ID header and ignores comment header.
+ * - This does not validate CRC or handle missing packets.
+ * - Seeking is not supported.
  */
 
 #![cfg_attr(not(test), no_std)]
+#![deny(missing_docs)]
 
 mod container;
 pub mod opus;
 
+/// Error from parsing bitstream.
 #[derive(Debug, PartialEq)]
 pub enum BitstreamError {
+    /// Error from parsing ogg container.
     OggError(container::OggError),
+    /// Error from parsing opus data within ogg container.
     OpusError(opus::OpusError),
+    /// Invalid ogg stream encountered.
     InvalidOggStream(&'static str),
+    /// Invalid opus stream encountered.
     InvalidOpusStream(&'static str),
+    /// Unsupported opus version encountered. Indicates requested version.
     UnsupportedOpusVersion(u8),
+    /// Unsupport ogg opus stream encountered.
     UnsupportedStream(&'static str),
 }
 
@@ -70,8 +89,10 @@ impl From<opus::OpusError> for BitstreamError {
     }
 }
 
+/// Result of parsing bitstream.
 pub type Result<'data, T> = core::result::Result<T, BitstreamError>;
 
+/// Ogg opus bitstream.
 #[derive(Debug)]
 pub struct Bitstream<'data> {
     data: &'data [u8],
@@ -96,6 +117,8 @@ impl<'data> Bitstream<'data> {
 }
 
 pub mod states {
+    //! BitstreamReader states.
+
     mod sealed {
         pub trait Sealed {}
 
@@ -104,27 +127,36 @@ pub mod states {
         impl Sealed for super::EndOfStream {}
     }
 
+    /// BitstreamReader is at the beginning of parsing bitstream.
     #[derive(Debug, PartialEq)]
     pub struct Beginning;
+    /// BitstreamReader has parsed headers and is ready to return opus data.
     #[derive(Debug, PartialEq)]
     pub struct InStream {
         // TODO: Allow selecting bitstream
         // TODO: Allow having multiple bitstreams in the same file but reading only one
+        /// Serial number of the bitstream.
         pub bitstream_serial_number: u32,
+        /// Page sequence number of the last read page.
         pub page_sequence_number: u32,
     }
+    /// BitstreamReader has completed stream parsing.
     #[derive(Debug, PartialEq)]
     pub struct EndOfStream;
 
+    /// State trait for BitstreamReader. Sealed.
     pub trait ReaderState: sealed::Sealed {}
 
     impl ReaderState for Beginning {}
     impl ReaderState for InStream {}
     impl ReaderState for EndOfStream {}
 
+    /// Either state may be returned.
     #[derive(Debug, PartialEq)]
     pub enum Either<A, B> {
+        /// Parsing can continue.
         Continued(A),
+        /// Parsing has reached the end of the stream.
         Ended(B),
     }
 }
@@ -141,6 +173,7 @@ type EitherPacketsOrEnded<'bs, 'data, const BUFFER_SIZE: usize> = (
     container::Packets<'data, BUFFER_SIZE>,
 );
 
+/// Reader for Bitstream.
 #[derive(Debug, PartialEq)]
 pub struct BitstreamReader<'bs, 'data: 'bs, S: ReaderState> {
     bitstream: core::marker::PhantomData<&'bs Bitstream<'data>>,
