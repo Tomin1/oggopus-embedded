@@ -109,6 +109,7 @@ impl OpusHeader {
 #[cfg(test)]
 mod test {
     use super::*;
+    use core::error::Error;
 
     #[test]
     fn parse_header() {
@@ -123,5 +124,48 @@ mod test {
         assert_eq!(page.pre_skip, 312);
         assert_eq!(page.sample_rate, 8_000);
         assert_eq!(page.output_gain, 0);
+    }
+
+    #[test]
+    fn corrupted_stream() {
+        let mut data = Vec::from(include_bytes!("test/opus.data"));
+        data[2] = 10;
+        let result = OpusHeader::parse(&data);
+        assert_eq!(result, Err(OpusError::NotOpusStream));
+        assert!(result.unwrap_err().source().is_none());
+    }
+
+    #[test]
+    fn incomplete_header() {
+        let data = include_bytes!("test/opus.data");
+        let result = OpusHeader::parse(&data[..10]);
+        assert_eq!(
+            result,
+            Err(OpusError::EndOfStreamError(Some(2.try_into().unwrap())))
+        );
+        assert!(result.unwrap_err().source().is_none());
+    }
+
+    #[test]
+    fn invalid_channels() {
+        let mut data = Vec::from(include_bytes!("test/opus.data"));
+        data[9] = 0;
+        let result = OpusHeader::parse(&data);
+        assert_eq!(
+            result,
+            Err(OpusError::InvalidStream(
+                "bad number of channels for family 0"
+            ))
+        );
+        assert!(result.unwrap_err().source().is_none());
+        data[0x12] = 1;
+        let result = OpusHeader::parse(&data);
+        assert_eq!(
+            result,
+            Err(OpusError::InvalidStream(
+                "bad number of channels for family 1"
+            ))
+        );
+        assert!(result.unwrap_err().source().is_none());
     }
 }

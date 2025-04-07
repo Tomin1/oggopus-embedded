@@ -296,7 +296,10 @@ mod test {
         let reader = bitstream.reader();
         let result = reader.read_header().unwrap();
         if let EitherHeaderOrEnded::Continued((_reader, header)) = result {
-            assert_eq!(header.channels, opus::ChannelMapping::Family0 { channels: 1 });
+            assert_eq!(
+                header.channels,
+                opus::ChannelMapping::Family0 { channels: 1 }
+            );
         } else {
             panic!("Stream ended too early!");
         }
@@ -309,7 +312,10 @@ mod test {
         let reader = bitstream.reader();
         let result = reader.read_header().unwrap();
         if let EitherHeaderOrEnded::Continued((_reader, header)) = result {
-            assert_eq!(header.channels, opus::ChannelMapping::Family0 { channels: 2 });
+            assert_eq!(
+                header.channels,
+                opus::ChannelMapping::Family0 { channels: 2 }
+            );
         } else {
             panic!("Stream ended too early!");
         }
@@ -320,6 +326,9 @@ mod test {
         const DATA: &[u8] = include_bytes!("test/vorbis.ogg");
         let bitstream = Bitstream::new(DATA);
         let reader = bitstream.reader();
-        assert_eq!(reader.read_header(), Err(BitstreamError::OpusError(opus::OpusError::NotOpusStream)));
+        assert_eq!(
+            reader.read_header(),
+            Err(BitstreamError::OpusError(opus::OpusError::NotOpusStream))
+        );
     }
 }

@@ -367,6 +367,7 @@ impl<const BUFFER_SIZE: usize> Packets<'_, BUFFER_SIZE> {
 #[cfg(test)]
 mod test {
     use super::*;
+    use core::error::Error;
 
     #[test]
     fn parse_empty_page() {
@@ -431,18 +432,98 @@ mod test {
     }
 
     #[test]
-    fn parse_incomplete_page() {
+    fn incomplete_page() {
         let data = include_bytes!("test/single.ogg");
         let result = Page::parse(&data[..40]);
         assert_eq!(result, Err(OggError::EndOfStreamError(None)));
     }
 
     #[test]
-    fn parse_incomplete_packet() {
+    fn incomplete_packet() {
         let data = include_bytes!("test/split.ogg");
         let result = Packets::<512>::parse(&data[..350]);
         assert_eq!(result, Err(OggError::EndOfStreamError(None)));
+        assert!(result.unwrap_err().source().is_none());
         let result = Packets::<512>::parse(&data[..300]);
-        assert_eq!(result, Err(OggError::EndOfStreamError(Some(1.try_into().unwrap()))));
+        assert_eq!(
+            result,
+            Err(OggError::EndOfStreamError(Some(1.try_into().unwrap())))
+        );
+        assert!(result.unwrap_err().source().is_none());
+    }
+
+    #[test]
+    fn invalid_version() {
+        let mut data = Vec::from(include_bytes!("test/empty.ogg"));
+        data[4] = 1;
+        let result = Page::parse(&data);
+        assert_eq!(result, Err(OggError::UnsupportedVersion(1)));
+        assert!(result.unwrap_err().source().is_none());
+    }
+
+    #[test]
+    fn test_skip() {
+        let data = include_bytes!("test/split.ogg");
+        let (remaining, page) = Page::skip(data).unwrap();
+        assert_eq!(remaining.len(), 0);
+        assert_eq!(page.data.len(), 45);
+        assert_eq!(page.header.version, 0);
+        assert_eq!(page.header.header_type, HeaderFlags::Continuation);
+        assert_eq!(page.header._granule_position, 0);
+        assert_eq!(page.header.bitstream_serial_number, 2132339074);
+        assert_eq!(page.header.page_sequence_number, 17);
+        assert_eq!(page.header.segment_table, &[45]);
+    }
+
+    #[test]
+    fn bad_sequence() {
+        let mut data = Vec::from(include_bytes!("test/split.ogg"));
+        data[0x12d] = 9;
+        let result = Page::skip(&data);
+        assert_eq!(
+            result,
+            Err(OggError::InvalidStream(
+                "page sequence numbers are not sequential"
+            ))
+        );
+        assert!(result.unwrap_err().source().is_none());
+        let result = Packets::<512>::parse(&data);
+        assert_eq!(
+            result,
+            Err(OggError::InvalidStream(
+                "page sequence numbers are not sequential"
+            ))
+        );
+        assert!(result.unwrap_err().source().is_none());
+    }
+
+    #[test]
+    fn bitstream_changed() {
+        let mut data = Vec::from(include_bytes!("test/split.ogg"));
+        data[0x129] = 0x81;
+        let result = Page::skip(&data);
+        assert_eq!(
+            result,
+            Err(OggError::UnsupportedStream(
+                "bitstream serial number changed unexpectedly"
+            ))
+        );
+        assert!(result.unwrap_err().source().is_none());
+        let result = Packets::<512>::parse(&data);
+        assert_eq!(
+            result,
+            Err(OggError::UnsupportedStream(
+                "bitstream serial number changed unexpectedly"
+            ))
+        );
+        assert!(result.unwrap_err().source().is_none());
+    }
+
+    #[test]
+    fn too_small_buffer() {
+        let data = include_bytes!("test/split.ogg");
+        let result = Packets::<64>::parse(data);
+        assert_eq!(result, Err(OggError::BufferTooSmallError(64, 300)));
+        assert!(result.unwrap_err().source().is_none());
     }
 }
