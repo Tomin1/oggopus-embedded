@@ -1,4 +1,4 @@
-/*!
+/*
  * Small no_std and no_alloc ogg parser for mono opus audio
  *
  * Copyright (c) 2025 Tomi Leppänen
@@ -17,7 +17,7 @@
 mod container;
 pub mod opus;
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum BitstreamError {
     OggError(container::OggError),
     OpusError(opus::OpusError),
@@ -72,15 +72,24 @@ impl From<opus::OpusError> for BitstreamError {
 
 pub type Result<'data, T> = core::result::Result<T, BitstreamError>;
 
+#[derive(Debug)]
 pub struct Bitstream<'data> {
     data: &'data [u8],
 }
 
 impl<'data> Bitstream<'data> {
+    /**
+     * Construct new Bitstream for constant data.
+     */
     pub const fn new(data: &'data [u8]) -> Self {
         Self { data }
     }
 
+    /**
+     * Create BitstreamReader to parse Bitstream.
+     *
+     * Returns BitstreamReader that is positioned at the beginning of a stream.
+     */
     pub fn reader<'bs>(&'bs self) -> BitstreamReader<'bs, 'data, states::Beginning> {
         BitstreamReader::<'bs, 'data, states::Beginning>::new(self)
     }
@@ -95,13 +104,16 @@ pub mod states {
         impl Sealed for super::EndOfStream {}
     }
 
+    #[derive(Debug, PartialEq)]
     pub struct Beginning;
+    #[derive(Debug, PartialEq)]
     pub struct InStream {
         // TODO: Allow selecting bitstream
         // TODO: Allow having multiple bitstreams in the same file but reading only one
         pub bitstream_serial_number: u32,
         pub page_sequence_number: u32,
     }
+    #[derive(Debug, PartialEq)]
     pub struct EndOfStream;
 
     pub trait ReaderState: sealed::Sealed {}
@@ -110,6 +122,7 @@ pub mod states {
     impl ReaderState for InStream {}
     impl ReaderState for EndOfStream {}
 
+    #[derive(Debug, PartialEq)]
     pub enum Either<A, B> {
         Continued(A),
         Ended(B),
@@ -128,6 +141,7 @@ type EitherPacketsOrEnded<'bs, 'data, const BUFFER_SIZE: usize> = (
     container::Packets<'data, BUFFER_SIZE>,
 );
 
+#[derive(Debug, PartialEq)]
 pub struct BitstreamReader<'bs, 'data: 'bs, S: ReaderState> {
     bitstream: core::marker::PhantomData<&'bs Bitstream<'data>>,
     remaining: &'data [u8],
@@ -135,6 +149,9 @@ pub struct BitstreamReader<'bs, 'data: 'bs, S: ReaderState> {
 }
 
 impl<S: ReaderState> BitstreamReader<'_, '_, S> {
+    /**
+     * Construct BitstreamReader for Bitstream.
+     */
     pub fn new<'bs, 'data>(
         bitstream: &'bs Bitstream<'data>,
     ) -> BitstreamReader<'bs, 'data, Beginning> {
@@ -147,8 +164,10 @@ impl<S: ReaderState> BitstreamReader<'_, '_, S> {
 }
 
 impl<'bs, 'data> BitstreamReader<'bs, 'data, Beginning> {
-    /*!
-     * Read a header packet from bitstream
+    /**
+     * Read a header packet from Bitstream.
+     *
+     * Also skips the comments packet and returs BitstreamReader that can read the following opus packets.
      */
     pub fn read_header(self) -> Result<'data, EitherHeaderOrEnded<'bs, 'data>> {
         use BitstreamError::*;
@@ -157,7 +176,7 @@ impl<'bs, 'data> BitstreamReader<'bs, 'data, Beginning> {
             remaining,
             ..
         } = self;
-        let (remaining, mut packets) = container::Packets::<20>::parse(remaining)?;
+        let (remaining, mut packets) = container::Packets::<30>::parse(remaining)?;
         let bitstream_serial_number = packets.bitstream_serial_number();
         let page_sequence_number = packets.current_page_sequence_number();
         if page_sequence_number != 0 {
@@ -198,7 +217,9 @@ impl<'bs, 'data> BitstreamReader<'bs, 'data, Beginning> {
 
 impl<'bs, 'data> BitstreamReader<'bs, 'data, InStream> {
     /**
-     * Read next packets from bitstream
+     * Read next packets from Bitstream.
+     *
+     * Returns also the next BitstreamReader to read further content.
      */
     pub fn next_packets<const BUFFER_SIZE: usize>(
         &self,
@@ -241,15 +262,15 @@ impl<'bs, 'data> BitstreamReader<'bs, 'data, InStream> {
 }
 
 impl<'bs, 'data> BitstreamReader<'bs, 'data, EndOfStream> {
-    /*!
-     * Return if there is more data to read
+    /**
+     * Return whether there is more data to read.
      */
     pub fn has_more(&self) -> bool {
         !self.remaining.is_empty()
     }
 
     /**
-     * Get next reader for more data
+     * Get next reader for more data if there is any.
      */
     pub fn next_reader(self) -> Option<BitstreamReader<'bs, 'data, Beginning>> {
         if self.has_more() {
@@ -261,5 +282,44 @@ impl<'bs, 'data> BitstreamReader<'bs, 'data, EndOfStream> {
         } else {
             None
         }
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn parse_mono() {
+        const DATA: &[u8] = include_bytes!("test/mono.opus");
+        let bitstream = Bitstream::new(DATA);
+        let reader = bitstream.reader();
+        let result = reader.read_header().unwrap();
+        if let EitherHeaderOrEnded::Continued((_reader, header)) = result {
+            assert_eq!(header.channels, opus::ChannelMapping::Family0 { channels: 1 });
+        } else {
+            panic!("Stream ended too early!");
+        }
+    }
+
+    #[test]
+    fn parse_stereo() {
+        const DATA: &[u8] = include_bytes!("test/stereo.opus");
+        let bitstream = Bitstream::new(DATA);
+        let reader = bitstream.reader();
+        let result = reader.read_header().unwrap();
+        if let EitherHeaderOrEnded::Continued((_reader, header)) = result {
+            assert_eq!(header.channels, opus::ChannelMapping::Family0 { channels: 2 });
+        } else {
+            panic!("Stream ended too early!");
+        }
+    }
+
+    #[test]
+    fn parse_vorbis() {
+        const DATA: &[u8] = include_bytes!("test/vorbis.ogg");
+        let bitstream = Bitstream::new(DATA);
+        let reader = bitstream.reader();
+        assert_eq!(reader.read_header(), Err(BitstreamError::OpusError(opus::OpusError::NotOpusStream)));
     }
 }

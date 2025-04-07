@@ -8,7 +8,7 @@
 use core::num::NonZeroUsize;
 use nom::{bytes::complete::tag, error::ErrorKind, number, Parser};
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum OpusError {
     ParsingError(ErrorKind),
     EndOfStreamError(Option<NonZeroUsize>),
@@ -28,11 +28,9 @@ impl core::fmt::Display for OpusError {
                 "Opus stream ended abruptly with {} more bytes needed",
                 size
             ))?,
-            EndOfStreamError(None) => {
-                f.write_fmt(format_args!("Opus stream ended abruptly"))?
-            }
+            EndOfStreamError(None) => f.write_fmt(format_args!("Opus stream ended abruptly"))?,
             InvalidStream(issue) => f.write_fmt(format_args!("invalid stream: {}", issue))?,
-            NotOpusStream => f.write_str("this is not and Opus stream")?,
+            NotOpusStream => f.write_str("this is not an Opus stream")?,
         };
         Ok(())
     }
@@ -58,6 +56,7 @@ impl<'data> From<nom::Err<(&'data [u8], ErrorKind)>> for OpusError {
 
 pub type Result<'data, O> = core::result::Result<O, OpusError>;
 
+#[derive(Debug, PartialEq)]
 pub enum ChannelMapping {
     Family0 { channels: u8 },
     Family1 { channels: u8 }, // TODO: Add the table
@@ -65,6 +64,7 @@ pub enum ChannelMapping {
     Reserved,
 }
 
+#[derive(Debug, PartialEq)]
 pub struct OpusHeader {
     pub version: u8,
     pub channels: ChannelMapping,
@@ -112,18 +112,8 @@ mod test {
 
     #[test]
     fn parse_header() {
-        let data = [
-            0x4F, 0x70, 0x75, 0x73, 0x48, 0x65, 0x61, 0x64, // "OpusHead"
-            0x01, // version, always 1
-            0x01, // number of channels
-            0x38, 0x01, // pre skip
-            0x80, 0x3E, 0x00, 0x00, // input sample rate
-            0x00, 0x00, // output gain
-            0x00, // channel mapping family, optionally followed by channel mapping table
-        ];
-        let result = OpusHeader::parse(&data);
-        assert!(result.is_ok());
-        let page = result.unwrap();
+        let data = include_bytes!("test/opus.data");
+        let page = OpusHeader::parse(data).unwrap();
         assert_eq!(page.version, 1);
         if let ChannelMapping::Family0 { channels } = page.channels {
             assert_eq!(channels, 1);
@@ -131,7 +121,7 @@ mod test {
             panic!("Channel mapping family must be 0");
         }
         assert_eq!(page.pre_skip, 312);
-        assert_eq!(page.sample_rate, 16_000);
+        assert_eq!(page.sample_rate, 8_000);
         assert_eq!(page.output_gain, 0);
     }
 }

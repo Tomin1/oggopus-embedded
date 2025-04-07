@@ -22,7 +22,7 @@ bitflags! {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum OggError {
     UnsupportedVersion(u8),
     ParsingError(ErrorKind),
@@ -49,9 +49,7 @@ impl core::fmt::Display for OggError {
                 size
             ))?,
             EndOfStreamError(None) => f.write_fmt(format_args!("Ogg stream ended abruptly"))?,
-            InvalidStream(issue) => {
-                f.write_fmt(format_args!("invalid Ogg stream: {}", issue))?
-            }
+            InvalidStream(issue) => f.write_fmt(format_args!("invalid Ogg stream: {}", issue))?,
             UnsupportedStream(error) => {
                 f.write_fmt(format_args!("unsupported stream: {}", error))?
             }
@@ -74,9 +72,16 @@ impl core::error::Error for OggError {
 impl<'data> From<nom::Err<(&'data [u8], ErrorKind)>> for OggError {
     fn from(error: nom::Err<(&'data [u8], ErrorKind)>) -> OggError {
         use OggError::*;
+        fn convert(kind: ErrorKind) -> OggError {
+            if kind == ErrorKind::Eof {
+                EndOfStreamError(None)
+            } else {
+                ParsingError(kind)
+            }
+        }
         match error {
-            nom::Err::Failure((_, kind)) => ParsingError(kind),
-            nom::Err::Error((_, kind)) => ParsingError(kind),
+            nom::Err::Failure((_, kind)) => convert(kind),
+            nom::Err::Error((_, kind)) => convert(kind),
             nom::Err::Incomplete(nom::Needed::Size(size)) => EndOfStreamError(Some(size)),
             nom::Err::Incomplete(nom::Needed::Unknown) => EndOfStreamError(None),
         }
@@ -85,12 +90,14 @@ impl<'data> From<nom::Err<(&'data [u8], ErrorKind)>> for OggError {
 
 pub type Result<'data, O> = core::result::Result<(&'data [u8], O), OggError>;
 
+#[derive(Debug, PartialEq)]
 struct Segment {
     before: usize,
     size: usize,
     complete: bool,
 }
 
+#[derive(Debug, PartialEq)]
 struct SegmentTableIterator<'data> {
     table: &'data [u8],
     cumulated: usize,
@@ -130,7 +137,7 @@ impl Iterator for SegmentTableIterator<'_> {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 struct PageHeader<'data> {
     version: u8,
     header_type: HeaderFlags,
@@ -177,6 +184,7 @@ impl PageHeader<'_> {
     }
 }
 
+#[derive(Debug, PartialEq)]
 pub struct Page<'data> {
     header: PageHeader<'data>,
     pub data: &'data [u8],
@@ -246,6 +254,7 @@ impl Page<'_> {
     }
 }
 
+#[derive(Debug, PartialEq)]
 pub struct Packets<'data, const BUFFER_SIZE: usize> {
     data: &'data [u8],
     page: Page<'data>,
@@ -361,53 +370,28 @@ mod test {
 
     #[test]
     fn parse_empty_page() {
-        let data = [
-            79, 103, 103, 83, // "OggS"
-            0,  // version, always 0
-            2,  // begin of stream
-            0, 0, 0, 0, 0, 0, 0, 0, // granule position
-            1, 0, 0, 0, // bitstream serial number
-            0, 0, 0, 0, // page sequence number
-            0, 0, 0, 0, // CRC, not verified
-            1, // number of page segments
-            0, // segment table
-        ];
-        let result = Page::parse(&data);
-        assert!(result.is_ok());
-        let (remaining, page) = result.unwrap();
+        let data = include_bytes!("test/empty.ogg");
+        let (remaining, page) = Page::parse(data).unwrap();
         assert_eq!(remaining.len(), 0);
         assert_eq!(page.data.len(), 0);
         assert_eq!(page.header.version, 0);
         assert_eq!(page.header.header_type, HeaderFlags::BeginOfStream);
         assert_eq!(page.header._granule_position, 0);
-        assert_eq!(page.header.bitstream_serial_number, 1);
+        assert_eq!(page.header.bitstream_serial_number, 2132339074);
         assert_eq!(page.header.page_sequence_number, 0);
         assert_eq!(page.header.segment_table, &[0]);
     }
 
     #[test]
     fn parse_single_segment() {
-        let data = [
-            0x4F, 0x67, 0x67, 0x53, // "OggS"
-            0x00, // version, always 0
-            0x02, // begin of stream
-            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // granule position
-            0x0E, 0x66, 0xD1, 0xFF, // bitstream serial number
-            0x00, 0x00, 0x00, 0x00, // page sequence number
-            0xDD, 0xD4, 0x9F, 0x50, // CRC
-            0x01, 0x13, // number of segments and page segments table
-            0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E,
-            0x0F, 0x10, 0x11, 0x12, 0x13, // end of data
-        ];
-        let result = Page::parse(&data);
-        assert!(result.is_ok());
-        let (remaining, page) = result.unwrap();
+        let data = include_bytes!("test/single.ogg");
+        let (remaining, page) = Page::parse(data).unwrap();
         assert_eq!(remaining.len(), 0);
         assert_eq!(page.data.len(), 0x13);
         assert_eq!(page.header.version, 0);
         assert_eq!(page.header.header_type, HeaderFlags::BeginOfStream);
         assert_eq!(page.header._granule_position, 0);
-        assert_eq!(page.header.bitstream_serial_number, 4291913230);
+        assert_eq!(page.header.bitstream_serial_number, 2132339074);
         assert_eq!(page.header.page_sequence_number, 0);
         assert_eq!(page.header.segment_table, &[0x13]);
         for (a, b) in (1u8..=0x19).zip(page.data) {
@@ -417,49 +401,10 @@ mod test {
 
     #[test]
     fn parse_packet() -> core::result::Result<(), String> {
-        let data = [
-            79, 103, 103, 83, // "OggS"
-            0,  // version, always 0
-            0,  // header flags
-            10, 0, 0, 0, 0, 0, 0, 0, // granule position
-            1, 0, 0, 0, // bitstream serial number
-            10, 0, 0, 0, // page sequence number
-            0, 0, 0, 0,   // CRC
-            1,   // number of page segments
-            255, // segment table, followed by data
-            0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22,
-            23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43,
-            44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64,
-            65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85,
-            86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 0, 1, 2, 3, 4, 5, 6, 7, 8,
-            9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29,
-            30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50,
-            51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71,
-            72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92,
-            93, 94, 95, 96, 97, 98, 99, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15,
-            16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36,
-            37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53,
-            54, // end of data
-            79, 103, 103, 83, // "OggS"
-            0,  // version, always 0
-            1,  // header flags
-            10, 0, 0, 0, 0, 0, 0, 0, // granule position
-            1, 0, 0, 0, // bitstream serial number
-            11, 0, 0, 0, // page sequence number
-            0, 0, 0, 0,  // CRC
-            1,  // number of page segments
-            45, // segment table, followed by data
-            55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75,
-            76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96,
-            97, 98, 99, // end of data
-        ];
-        let result = Packets::<512>::parse(&data);
-        assert!(result.is_ok());
-        let (remaining, mut packets) = result.unwrap();
+        let data = include_bytes!("test/split.ogg");
+        let (remaining, mut packets) = Packets::<512>::parse(data).unwrap();
         assert_eq!(remaining.len(), 0);
-        let result = packets.next();
-        assert!(result.is_some());
-        let packet = result.unwrap();
+        let packet = packets.next().unwrap();
         assert_eq!(packet.data.len(), 300);
         for (i, (a, b)) in (0u8..=99)
             .chain(0u8..=99)
@@ -483,5 +428,21 @@ mod test {
             }
         }
         Ok(())
+    }
+
+    #[test]
+    fn parse_incomplete_page() {
+        let data = include_bytes!("test/single.ogg");
+        let result = Page::parse(&data[..40]);
+        assert_eq!(result, Err(OggError::EndOfStreamError(None)));
+    }
+
+    #[test]
+    fn parse_incomplete_packet() {
+        let data = include_bytes!("test/split.ogg");
+        let result = Packets::<512>::parse(&data[..350]);
+        assert_eq!(result, Err(OggError::EndOfStreamError(None)));
+        let result = Packets::<512>::parse(&data[..300]);
+        assert_eq!(result, Err(OggError::EndOfStreamError(Some(1.try_into().unwrap()))));
     }
 }
