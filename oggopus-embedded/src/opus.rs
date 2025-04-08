@@ -65,6 +65,7 @@ pub type Result<'data, O> = core::result::Result<O, OpusError>;
 
 /// Channel mapping of opus stream.
 #[derive(Debug, PartialEq)]
+#[non_exhaustive]
 pub enum ChannelMapping {
     /**
      * Family 0 channel mapping.
@@ -78,27 +79,245 @@ pub enum ChannelMapping {
     /**
      * Family 1 channel mapping.
      *
-     * This is missing channel mapping table member.
-     *
-     * Currently not supported.
+     * Vorbis channel order.
      */
     Family1 {
-        // TODO: Add the table
         /// The number of channels, which can be between 1 and 8.
         channels: u8,
+        /// Channel mapping table.
+        table: ChannelMappingTable<8>,
     },
     /**
      * Family 255 channel mapping.
      *
-     * Currently not supported.
+     * Channels are unidentified.
      */
-    Family255,
+    Family255 {
+        /// The number of channels.
+        channels: u8,
+        /// Channel mapping table.
+        table: ChannelMappingTable<255>,
+    },
     /**
      * Reserved channel mapping value was used in the stream.
      *
-     * Currently not supported.
+     * Such mapping may be a future extension to the container format.
      */
-    Reserved,
+    Reserved {
+        /// The number of channels.
+        channels: u8,
+        /// Channel mapping table.
+        table: ChannelMappingTable<255>,
+    },
+}
+
+impl ChannelMapping {
+    /// Get channel count.
+    pub fn get_channel_count(&self) -> u8 {
+        use ChannelMapping::*;
+        match self {
+            Family0 { channels } => *channels,
+            Family1 { channels, .. } => *channels,
+            Family255 { channels, .. } => *channels,
+            Reserved { channels, .. } => *channels,
+        }
+    }
+
+    /// Get stream count.
+    pub fn get_stream_count(&self) -> u8 {
+        use ChannelMapping::*;
+        match self {
+            Family0 { .. } => 1,
+            Family1 { table, .. } => table.stream_count,
+            Family255 { table, .. } => table.stream_count,
+            Reserved { table, .. } => table.stream_count,
+        }
+    }
+
+    /// Get coupled stream count.
+    pub fn get_coupled_stream_count(&self) -> u8 {
+        use ChannelMapping::*;
+        match self {
+            Family0 { channels } => *channels - 1,
+            Family1 { table, .. } => table.coupled_count,
+            Family255 { table, .. } => table.coupled_count,
+            Reserved { table, .. } => table.coupled_count,
+        }
+    }
+
+    /**
+     * Get channel mapping for given channel index.
+     *
+     * Returns None for invalid channel indexes.
+     */
+    pub fn get_mapping(&self, channel: u8) -> Option<Mapping> {
+        use ChannelMapping::*;
+        let (speaker_location, index, coupled_count) = match self {
+            Family0 { channels } => {
+                let speaker_location = match (*channels, channel) {
+                    (1, 0) => SpeakerLocation::Mono,
+                    (2, 0) => SpeakerLocation::Left,
+                    (2, 1) => SpeakerLocation::Right,
+                    _ => return None,
+                };
+                Some((Some(speaker_location), channel, *channels - 1))
+            }
+            Family1 { channels, table } => {
+                let speaker_location = match (*channels, channel) {
+                    (1, 0) => SpeakerLocation::Mono,
+                    (2..=8, 0) => SpeakerLocation::Left,
+                    (2, 1) | (3, 2) | (4, 1) | (5..=8, 2) => SpeakerLocation::Right,
+                    (3, 1) | (5..=8, 1) => SpeakerLocation::Center,
+                    (4, 2) | (5..=6, 3) | (8, 5) => SpeakerLocation::RearLeft,
+                    (4, 3) | (5..=6, 4) | (8, 6) => SpeakerLocation::RearRight,
+                    (6, 5) | (7, 6) | (8, 7) => SpeakerLocation::LFE,
+                    (7..=8, 3) => SpeakerLocation::SideLeft,
+                    (7..=8, 4) => SpeakerLocation::SideRight,
+                    (7, 5) => SpeakerLocation::RearCenter,
+                    _ => return None,
+                };
+                let ChannelMappingTable {
+                    coupled_count,
+                    mapping,
+                    ..
+                } = &table;
+                let index = mapping[usize::from(channel)];
+                Some((Some(speaker_location), index, *coupled_count))
+            }
+            Family255 { channels, table } | Reserved { channels, table } => {
+                if channel >= *channels {
+                    None
+                } else {
+                    let ChannelMappingTable {
+                        coupled_count,
+                        mapping,
+                        ..
+                    } = &table;
+                    let index = mapping[usize::from(channel)];
+                    Some((None, index, *coupled_count))
+                }
+            }
+        }?;
+        if index == 255 {
+            Some(Mapping {
+                stream: None,
+                speaker_location,
+            })
+        } else {
+            let stream = if index < 2 * coupled_count {
+                if index % 2 == 0 {
+                    (index / 2, DecodedChannel::Left)
+                } else {
+                    (index / 2, DecodedChannel::Right)
+                }
+            } else {
+                (index - coupled_count, DecodedChannel::Mono)
+            };
+            let stream = Some(stream);
+            Some(Mapping {
+                stream,
+                speaker_location,
+            })
+        }
+    }
+}
+
+/// Speaker location in audio setup.
+#[derive(Debug, PartialEq)]
+#[non_exhaustive]
+pub enum SpeakerLocation {
+    /// Mono speaker.
+    Mono,
+    /// Left channel of a stereo stream. Front left in surround setup.
+    Left,
+    /// Right channel of a stereo stream. Front right in surround setup.
+    Right,
+    /// Center channel in linear surround setup. Front center in surround setup.
+    Center,
+    /// Rear left channel of a surround setup.
+    RearLeft,
+    /// Rear right channel of a surround setup.
+    RearRight,
+    /// Rear center channel of a surround setup.
+    RearCenter,
+    /// Side left channel of a surround setup.
+    SideLeft,
+    /// Side right channel of a surround setup.
+    SideRight,
+    /// Low-frequency effects channel of a surround setup.
+    LFE,
+}
+
+/// Decoded opus channel to use for this audio channel.
+#[derive(Debug, PartialEq)]
+pub enum DecodedChannel {
+    /// The opus stream will be mono audio.
+    Mono,
+    /// Use the first decoded channel of the stereo stream.
+    Left,
+    /// Use the second decoded channel of the stereo stream.
+    Right,
+}
+
+/// Channel mapping for an audio channel.
+#[derive(Debug, PartialEq)]
+pub struct Mapping {
+    /// Stream index and decoded opus stream channel to use. Silent channel if None.
+    pub stream: Option<(u8, DecodedChannel)>,
+    /// Speaker location for this index if available.
+    pub speaker_location: Option<SpeakerLocation>,
+}
+
+/// Channel mapping table.
+#[derive(Debug, PartialEq)]
+pub struct ChannelMappingTable<const MAX_CHANNELS: usize> {
+    /// The number of total streams encoded in each Ogg packet.
+    stream_count: u8,
+    /// The number of stereo decoders needed.
+    coupled_count: u8,
+    /// Channel mapping data.
+    mapping: [u8; MAX_CHANNELS],
+}
+
+impl<const MAX_CHANNELS: usize> ChannelMappingTable<MAX_CHANNELS> {
+    fn parse(input: &[u8], channels: u8) -> Result<ChannelMappingTable<MAX_CHANNELS>> {
+        use OpusError::*;
+        let (input, stream_count) = number::u8().parse(input)?;
+        let (input, coupled_count) = number::u8().parse(input)?;
+        let total_stream_count = stream_count
+            .checked_add(coupled_count)
+            .ok_or(InvalidStream("total stream count cannot be more than 255"))?;
+        if stream_count == 0 {
+            Err(InvalidStream("stream count cannot be 0"))
+        } else if coupled_count > stream_count {
+            Err(InvalidStream(
+                "coupled stream count cannot be larger than stream count",
+            ))
+        } else if input.len() != channels.into() {
+            Err(InvalidStream(
+                "channel mapping table length does not match the number of channels",
+            ))
+        } else if input.len() > MAX_CHANNELS {
+            Err(InvalidStream(
+                "channel mapping table does not fit to reserved space",
+            ))
+        } else {
+            let mut mapping = [0; MAX_CHANNELS];
+            for (i, &v) in input.iter().enumerate() {
+                if v >= total_stream_count && v != 255 {
+                    return Err(InvalidStream(
+                        "invalid channel index in channel mapping table",
+                    ));
+                }
+                mapping[i] = v;
+            }
+            Ok(ChannelMappingTable {
+                stream_count,
+                coupled_count,
+                mapping,
+            })
+        }
+    }
 }
 
 /// Opus header data.
@@ -117,12 +336,7 @@ pub struct OpusHeader {
 }
 
 impl OpusHeader {
-    /**
-     * Parse opus header from input data.
-     *
-     * # Panics
-     * Will panic when unsupported channel mapping is encountered.
-     */
+    /// Parse opus header from input data.
     pub fn parse(input: &[u8]) -> Result<Self> {
         use OpusError::*;
         let (input, _) = tag(b"OpusHead".as_slice())(input)
@@ -132,18 +346,27 @@ impl OpusHeader {
         let (input, pre_skip) = number::le_u16().parse(input)?;
         let (input, sample_rate) = number::le_u32().parse(input)?;
         let (input, output_gain) = number::le_u16().parse(input)?;
-        let (_channel_mapping_table, channel_mapping_family) = number::u8().parse(input)?;
+        let (channel_mapping_table, channel_mapping_family) = number::u8().parse(input)?;
         let channels = match channel_mapping_family {
             0 => match channels {
                 1..=2 => ChannelMapping::Family0 { channels },
                 _ => return Err(InvalidStream("bad number of channels for family 0")),
             },
             1 => match channels {
-                1..=8 => todo!(),
+                1..=8 => ChannelMapping::Family1 {
+                    channels,
+                    table: ChannelMappingTable::parse(channel_mapping_table, channels)?,
+                },
                 _ => return Err(InvalidStream("bad number of channels for family 1")),
             },
-            255 => todo!(),
-            _ => todo!(),
+            255 => ChannelMapping::Family255 {
+                channels,
+                table: ChannelMappingTable::parse(channel_mapping_table, channels)?,
+            },
+            _ => ChannelMapping::Reserved {
+                channels,
+                table: ChannelMappingTable::parse(channel_mapping_table, channels)?,
+            },
         };
         Ok(Self {
             version,

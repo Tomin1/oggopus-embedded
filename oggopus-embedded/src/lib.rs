@@ -14,13 +14,12 @@
  * and [RFC7845](https://datatracker.ietf.org/doc/html/rfc7845).
  *
  * # Limitations
- * - Supports only one logical stream of opus audio.
- * - Supports only Family 0 channel mappings.
- * - Supports only ogg files with a single stream at a time.
- * - Mixing other types of streams is not supported.
+ * - Supports only one logical stream at a time. Grouping is not supported.
+ * - Mixing (interleaving or otherwise) other types of streams than opus is not supported.
  * - This parses ID header and ignores comment header.
  * - This does not validate CRC or handle missing packets.
  * - Seeking is not supported.
+ * - Parsing of [RFC8486](https://datatracker.ietf.org/doc/html/rfc8486) family channel mappings is not supported.
  */
 
 #![cfg_attr(not(test), no_std)]
