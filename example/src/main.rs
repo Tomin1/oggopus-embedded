@@ -19,10 +19,9 @@ fn main() -> Result<(), Box<dyn core::error::Error>> {
     let stream_content = std::fs::read(std::env::args().nth(1).ok_or("Argument missing")?)?;
 
     let stream: Bitstream = Bitstream::new(stream_content.as_slice());
-    let reader = stream.reader();
-    let states::Either::Continued((mut reader, header)) = reader
-        .read_header()
-        .inspect_err(|err| println!("Failed to read header or comments packet: {err:?}"))?
+    let (reader, header) = stream.reader().read_header()
+        .inspect_err(|err| println!("Failed to read header or comments packet: {err:?}"))?;
+    let states::Either::Continued(mut reader) = reader
     else {
         return Err("Stream ended after header or comments packet".into());
     };
@@ -76,7 +75,7 @@ fn main() -> Result<(), Box<dyn core::error::Error>> {
         match new_reader {
             states::Either::Ended(next_reader) => {
                 if let Some(next_reader) = next_reader.next_reader() {
-                    let states::Either::Continued((next_reader, header)) =
+                    let (states::Either::Continued(next_reader), header) =
                         next_reader.read_header().inspect_err(|err| {
                             println!("Failed to read header or comments packet: {err:?}")
                         })?

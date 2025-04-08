@@ -163,12 +163,14 @@ pub mod states {
 
 use states::{Beginning, Either, EndOfStream, InStream, ReaderState};
 
-type EitherHeaderOrEnded<'bs, 'data> = Either<
-    (BitstreamReader<'bs, 'data, InStream>, opus::OpusHeader),
-    BitstreamReader<'bs, 'data, EndOfStream>,
->;
+/// Header with reader for the stream or stream ended.
+pub type EitherHeaderOrEnded<'bs, 'data> = (
+    Either<BitstreamReader<'bs, 'data, InStream>, BitstreamReader<'bs, 'data, EndOfStream>>,
+    opus::OpusHeader,
+);
 
-type EitherPacketsOrEnded<'bs, 'data, const BUFFER_SIZE: usize> = (
+/// Packets with reader for the stream or stream ended.
+pub type EitherPacketsOrEnded<'bs, 'data, const BUFFER_SIZE: usize> = (
     Either<BitstreamReader<'bs, 'data, InStream>, BitstreamReader<'bs, 'data, EndOfStream>>,
     container::Packets<'data, BUFFER_SIZE>,
 );
@@ -231,17 +233,17 @@ impl<'bs, 'data> BitstreamReader<'bs, 'data, Beginning> {
                     "bitstream serial number changed unexpectedly",
                 ));
             }
-            Ok(Either::Continued((
-                BitstreamReader {
+            Ok((
+                Either::Continued(BitstreamReader {
                     bitstream,
                     remaining,
                     marker: InStream {
                         bitstream_serial_number,
                         page_sequence_number: last_page.page_sequence_number(),
                     },
-                },
+                }),
                 header,
-            )))
+            ))
         } else {
             Err(InvalidOpusStream("missing header"))
         }
@@ -327,15 +329,11 @@ mod test {
         const DATA: &[u8] = include_bytes!("test/mono.opus");
         let bitstream = Bitstream::new(DATA);
         let reader = bitstream.reader();
-        let result = reader.read_header().unwrap();
-        if let EitherHeaderOrEnded::Continued((_reader, header)) = result {
-            assert_eq!(
-                header.channels,
-                opus::ChannelMapping::Family0 { channels: 1 }
-            );
-        } else {
-            panic!("Stream ended too early!");
-        }
+        let (_either, header) = reader.read_header().unwrap();
+        assert_eq!(
+            header.channels,
+            opus::ChannelMapping::Family0 { channels: 1 }
+        );
     }
 
     #[test]
@@ -343,15 +341,11 @@ mod test {
         const DATA: &[u8] = include_bytes!("test/stereo.opus");
         let bitstream = Bitstream::new(DATA);
         let reader = bitstream.reader();
-        let result = reader.read_header().unwrap();
-        if let EitherHeaderOrEnded::Continued((_reader, header)) = result {
-            assert_eq!(
-                header.channels,
-                opus::ChannelMapping::Family0 { channels: 2 }
-            );
-        } else {
-            panic!("Stream ended too early!");
-        }
+        let (_either, header) = reader.read_header().unwrap();
+        assert_eq!(
+            header.channels,
+            opus::ChannelMapping::Family0 { channels: 2 }
+        );
     }
 
     #[test]
