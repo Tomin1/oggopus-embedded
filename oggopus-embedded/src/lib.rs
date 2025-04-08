@@ -186,6 +186,10 @@ pub struct BitstreamReader<'bs, 'data: 'bs, S: ReaderState> {
 impl<S: ReaderState> BitstreamReader<'_, '_, S> {
     /**
      * Construct BitstreamReader for Bitstream.
+     * ```ignore
+     * use oggopus_embedded::Bitstream;
+     * let stream = Bitstream::new(include_bytes!("audio.opus"));
+     * ```
      */
     pub fn new<'bs, 'data>(
         bitstream: &'bs Bitstream<'data>,
@@ -203,6 +207,20 @@ impl<'bs, 'data> BitstreamReader<'bs, 'data, Beginning> {
      * Read a header packet from Bitstream.
      *
      * Also skips the comments packet and returs BitstreamReader that can read the following opus packets.
+     *
+     * ```rust
+     * # use oggopus_embedded::{Bitstream, opus::ChannelMapping};
+     * # let data = include_bytes!("test/mono.opus");
+     * # let stream = Bitstream::new(data);
+     * let reader = stream.reader();
+     * let (reader, header) = reader.read_header().unwrap();
+     * if let ChannelMapping::Family0 { channels } = header.channels {
+     *     println!(
+     *         "{} channels at {} Hz with pre skip of {}",
+     *         channels, header.sample_rate, header.pre_skip
+     *     );
+     * }
+     * ```
      */
     pub fn read_header(self) -> Result<'data, EitherHeaderOrEnded<'bs, 'data>> {
         use BitstreamError::*;
@@ -255,6 +273,36 @@ impl<'bs, 'data> BitstreamReader<'bs, 'data, InStream> {
      * Read next packets from Bitstream.
      *
      * Returns also the next BitstreamReader to read further content.
+     *
+     * ```rust
+     * # use oggopus_embedded::{Bitstream, EitherHeaderOrEnded, EitherPacketsOrEnded, opus::ChannelMapping, states::Either};
+     * # let data = include_bytes!("test/mono.opus");
+     * # let stream = Bitstream::new(data);
+     * # let reader = stream.reader();
+     * # let (reader, _header) = reader.read_header().unwrap();
+     * # let channels = 1;
+     * # let sample_rate = 16_000;
+     * let mut reader = match reader {
+     *     Either::Continued(reader) => reader,
+     *     _ => panic!("No more data"),
+     * };
+     * loop {
+     *     let (new_reader, mut packets) = reader.next_packets::<1_024>().unwrap();
+     *     while let Some(packet) = packets.next() {
+     *         // Decode or whatever you need to do here
+     *         println!("Got {} bytes of opus data", packet.data.len());
+     *     }
+     *     match new_reader {
+     *         Either::Continued(new_reader) => {
+     *             // Prepare for the next loop
+     *             reader = new_reader;
+     *         }
+     *         Either::Ended(_reader) => {
+     *             break; // You can also expect the next stream to start here
+     *         }
+     *     }
+     * }
+     * ```
      */
     pub fn next_packets<const BUFFER_SIZE: usize>(
         &self,
@@ -306,6 +354,35 @@ impl<'bs, 'data> BitstreamReader<'bs, 'data, EndOfStream> {
 
     /**
      * Get next reader for more data if there is any.
+     *
+     * ```rust
+     * # use oggopus_embedded::{Bitstream, EitherHeaderOrEnded, EitherPacketsOrEnded, opus::ChannelMapping, states::Either};
+     * # let data = include_bytes!("test/mono.opus");
+     * # let stream = Bitstream::new(data);
+     * # let (reader, _header) = stream.reader().read_header().unwrap();
+     * # let Either::Continued(mut reader) = reader
+     * # else { panic!("Data endded abruptly"); };
+     * # let channels = 1;
+     * # let sample_rate = 16_000;
+     * loop {
+     *     let (new_reader, _packets) = reader.next_packets::<1_024>().unwrap();
+     *     // ...
+     *     match new_reader {
+     *         Either::Continued(new_reader) => {
+     *             reader = new_reader;
+     *         }
+     *         Either::Ended(old_reader) => {
+     *             if let Some(new_reader) = old_reader.next_reader() {
+     *                 // Reinitialize decoding and continue looping
+     *                 let (new_reader, header) = new_reader.read_header().unwrap();
+     *                 if let Either::Continued(reader) = new_reader {
+     *                 }
+     *             } else {
+     *                 break;
+     *             }
+     *         }
+     *     }
+     * }
      */
     pub fn next_reader(self) -> Option<BitstreamReader<'bs, 'data, Beginning>> {
         if self.has_more() {
