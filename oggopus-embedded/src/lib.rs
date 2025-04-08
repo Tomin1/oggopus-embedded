@@ -100,16 +100,16 @@ pub struct Bitstream<'data> {
 
 impl<'data> Bitstream<'data> {
     /**
-     * Construct new Bitstream for constant data.
+     * Construct new [`Bitstream`] for constant data.
      */
     pub const fn new(data: &'data [u8]) -> Self {
         Self { data }
     }
 
     /**
-     * Create BitstreamReader to parse Bitstream.
+     * Create [`BitstreamReader`] to parse [`Bitstream`].
      *
-     * Returns BitstreamReader that is positioned at the beginning of a stream.
+     * Returns [`BitstreamReader`] that is positioned at the beginning of a stream.
      */
     pub fn reader<'bs>(&'bs self) -> BitstreamReader<'bs, 'data, states::Beginning> {
         BitstreamReader::<'bs, 'data, states::Beginning>::new(self)
@@ -117,7 +117,7 @@ impl<'data> Bitstream<'data> {
 }
 
 pub mod states {
-    //! BitstreamReader states.
+    //! [`BitstreamReader`][`super::BitstreamReader`] states.
 
     mod sealed {
         pub trait Sealed {}
@@ -127,10 +127,10 @@ pub mod states {
         impl Sealed for super::EndOfStream {}
     }
 
-    /// BitstreamReader is at the beginning of parsing bitstream.
+    /// [`BitstreamReader`][`super::BitstreamReader`] is at the beginning of parsing bitstream.
     #[derive(Debug, PartialEq)]
     pub struct Beginning;
-    /// BitstreamReader has parsed headers and is ready to return opus data.
+    /// [`BitstreamReader`][`super::BitstreamReader`] has parsed headers and is ready to return opus data.
     #[derive(Debug, PartialEq)]
     pub struct InStream {
         // TODO: Allow selecting bitstream
@@ -140,11 +140,11 @@ pub mod states {
         /// Page sequence number of the last read page.
         pub page_sequence_number: u32,
     }
-    /// BitstreamReader has completed stream parsing.
+    /// [`BitstreamReader`][`super::BitstreamReader`] has completed stream parsing.
     #[derive(Debug, PartialEq)]
     pub struct EndOfStream;
 
-    /// State trait for BitstreamReader. Sealed.
+    /// State trait for [`BitstreamReader`][`super::BitstreamReader`]. Sealed.
     pub trait ReaderState: sealed::Sealed {}
 
     impl ReaderState for Beginning {}
@@ -175,7 +175,7 @@ pub type EitherPacketsOrEnded<'bs, 'data, const BUFFER_SIZE: usize> = (
     container::Packets<'data, BUFFER_SIZE>,
 );
 
-/// Reader for Bitstream.
+/// Reader for [`Bitstream`].
 #[derive(Debug, PartialEq)]
 pub struct BitstreamReader<'bs, 'data: 'bs, S: ReaderState> {
     bitstream: core::marker::PhantomData<&'bs Bitstream<'data>>,
@@ -185,7 +185,8 @@ pub struct BitstreamReader<'bs, 'data: 'bs, S: ReaderState> {
 
 impl<S: ReaderState> BitstreamReader<'_, '_, S> {
     /**
-     * Construct BitstreamReader for Bitstream.
+     * Construct [`BitstreamReader`] for [`Bitstream`].
+     *
      * ```ignore
      * use oggopus_embedded::Bitstream;
      * let stream = Bitstream::new(include_bytes!("audio.opus"));
@@ -204,9 +205,9 @@ impl<S: ReaderState> BitstreamReader<'_, '_, S> {
 
 impl<'bs, 'data> BitstreamReader<'bs, 'data, Beginning> {
     /**
-     * Read a header packet from Bitstream.
+     * Read a header packet from [`Bitstream`].
      *
-     * Also skips the comments packet and returs BitstreamReader that can read the following opus packets.
+     * Also skips the comments packet and returs [`BitstreamReader`] that can read the following opus packets.
      *
      * ```rust
      * # use oggopus_embedded::{Bitstream, opus::ChannelMapping};
@@ -272,7 +273,7 @@ impl<'bs, 'data> BitstreamReader<'bs, 'data, InStream> {
     /**
      * Read next packets from Bitstream.
      *
-     * Returns also the next BitstreamReader to read further content.
+     * Returns also the next [`BitstreamReader`] to read further content.
      *
      * ```rust
      * # use oggopus_embedded::{Bitstream, EitherHeaderOrEnded, EitherPacketsOrEnded, opus::ChannelMapping, states::Either};
