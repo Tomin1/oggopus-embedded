@@ -204,6 +204,18 @@ impl Decoder {
      * Decode opus packet from data into output buffer.
      *
      * Returns the number of decoded samples in the output buffer.
+     *
+     * ```no_run
+     * # use opus_embedded::{Decoder, SamplingRate, Channels};
+     * # let data = [0, 0, 0, 0, 0, 0, 0];
+     * # let data = data.as_slice();
+     * let mut decoder = Decoder::new(SamplingRate::F24k, Channels::Mono).unwrap();
+     * let mut output = Vec::new();
+     * // If you use stereo audio, multiply the number of samples by two for output size.
+     * output.resize(decoder.get_nb_samples(data).unwrap(), 0);
+     * let samples = decoder.decode(data, &mut output).unwrap();
+     * println!("Got {} samples of data in output", samples);
+     * ```
      */
     pub fn decode(&mut self, data: &[u8], output: &mut [i16]) -> Result<usize, DecoderError> {
         // SAFETY: All lengths are derived from input arrays
