@@ -1,5 +1,5 @@
 [package]
-name = "example"
+name = "example-linux"
 version = "0.1.0"
 license = "BSD-3-Clause"
 edition = "2021"
