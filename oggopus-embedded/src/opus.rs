@@ -16,8 +16,10 @@ pub enum OpusError {
     ParsingError(ErrorKind),
     /// Stream ended abruptly.
     EndOfStreamError(Option<NonZeroUsize>),
-    /// Stream was not a valid opus stream.
+    /// Stream is not a valid opus stream, e.g. it has a value outside specifications.
     InvalidStream(&'static str),
+    /// Stream is not supported. Enabled features may affect this.
+    UnsupportedStream(&'static str),
     /// Stream is not an opus stream but something else.
     NotOpusStream,
 }
@@ -36,6 +38,9 @@ impl core::fmt::Display for OpusError {
             ))?,
             EndOfStreamError(None) => f.write_fmt(format_args!("Opus stream ended abruptly"))?,
             InvalidStream(issue) => f.write_fmt(format_args!("invalid stream: {}", issue))?,
+            UnsupportedStream(issue) => {
+                f.write_fmt(format_args!("unsupported stream: {}", issue))?
+            }
             NotOpusStream => f.write_str("this is not an Opus stream")?,
         };
         Ok(())
@@ -87,10 +92,13 @@ pub enum ChannelMapping {
         /// Channel mapping table.
         table: ChannelMappingTable<8>,
     },
+    #[cfg(feature = "family255")]
     /**
      * Family 255 channel mapping.
      *
      * Channels are unidentified.
+     *
+     * Only available if family255 feature has been enabled.
      */
     Family255 {
         /// The number of channels.
@@ -98,10 +106,13 @@ pub enum ChannelMapping {
         /// Channel mapping table.
         table: ChannelMappingTable<255>,
     },
+    #[cfg(feature = "family255")]
     /**
      * Reserved channel mapping value was used in the stream.
      *
      * Such mapping may be a future extension to the container format.
+     *
+     * Only available if family255 feature has been enabled.
      */
     Reserved {
         /// The number of channels.
@@ -118,7 +129,9 @@ impl ChannelMapping {
         match self {
             Family0 { channels } => *channels,
             Family1 { channels, .. } => *channels,
+            #[cfg(feature = "family255")]
             Family255 { channels, .. } => *channels,
+            #[cfg(feature = "family255")]
             Reserved { channels, .. } => *channels,
         }
     }
@@ -129,7 +142,9 @@ impl ChannelMapping {
         match self {
             Family0 { .. } => 1,
             Family1 { table, .. } => table.stream_count,
+            #[cfg(feature = "family255")]
             Family255 { table, .. } => table.stream_count,
+            #[cfg(feature = "family255")]
             Reserved { table, .. } => table.stream_count,
         }
     }
@@ -140,7 +155,9 @@ impl ChannelMapping {
         match self {
             Family0 { channels } => *channels - 1,
             Family1 { table, .. } => table.coupled_count,
+            #[cfg(feature = "family255")]
             Family255 { table, .. } => table.coupled_count,
+            #[cfg(feature = "family255")]
             Reserved { table, .. } => table.coupled_count,
         }
     }
@@ -184,6 +201,7 @@ impl ChannelMapping {
                 let index = mapping[usize::from(channel)];
                 Some((Some(speaker_location), index, *coupled_count))
             }
+            #[cfg(feature = "family255")]
             Family255 { channels, table } | Reserved { channels, table } => {
                 if channel >= *channels {
                     None
@@ -336,7 +354,12 @@ pub struct OpusHeader {
 }
 
 impl OpusHeader {
-    /// Parse opus header from input data.
+    /**
+     * Parse opus header from input data.
+     *
+     * May return [`UnsupportedStream`][`OpusError::UnsupportedStream`] if family255 feature has
+     * not been enabled and such stream is encountered.
+     */
     pub fn parse(input: &[u8]) -> Result<Self> {
         use OpusError::*;
         let (input, _) = tag(b"OpusHead".as_slice())(input)
@@ -359,14 +382,22 @@ impl OpusHeader {
                 },
                 _ => return Err(InvalidStream("bad number of channels for family 1")),
             },
+            #[cfg(feature = "family255")]
             255 => ChannelMapping::Family255 {
                 channels,
                 table: ChannelMappingTable::parse(channel_mapping_table, channels)?,
             },
+            #[cfg(feature = "family255")]
             _ => ChannelMapping::Reserved {
                 channels,
                 table: ChannelMappingTable::parse(channel_mapping_table, channels)?,
             },
+            #[cfg(not(feature = "family255"))]
+            _ => {
+                return Err(UnsupportedStream(
+                    "family 255 channel mapping is not supported",
+                ))
+            }
         };
         Ok(Self {
             version,

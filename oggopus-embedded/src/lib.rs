@@ -41,8 +41,10 @@ pub enum BitstreamError {
     InvalidOpusStream(&'static str),
     /// Unsupported opus version encountered. Indicates requested version.
     UnsupportedOpusVersion(u8),
-    /// Unsupport ogg opus stream encountered.
+    /// Unsupported ogg opus stream encountered. Enabled features may affect this.
     UnsupportedStream(&'static str),
+    /// Stream is not an opus stream but something else.
+    NotOpusStream,
 }
 
 impl core::fmt::Display for BitstreamError {
@@ -57,6 +59,7 @@ impl core::fmt::Display for BitstreamError {
                 f.write_fmt(format_args!("unsupported Opus version: {}", version))
             }
             UnsupportedStream(error) => f.write_str(error),
+            NotOpusStream => f.write_str("this is not an Opus stream"),
         }
     }
 }
@@ -84,7 +87,11 @@ impl From<container::OggError> for BitstreamError {
 
 impl From<opus::OpusError> for BitstreamError {
     fn from(error: opus::OpusError) -> BitstreamError {
-        Self::OpusError(error)
+        match error {
+            opus::OpusError::UnsupportedStream(error) => Self::UnsupportedStream(error),
+            opus::OpusError::NotOpusStream => Self::NotOpusStream,
+            _ => Self::OpusError(error),
+        }
     }
 }
 
@@ -432,7 +439,7 @@ mod test {
         let reader = bitstream.reader();
         assert_eq!(
             reader.read_header(),
-            Err(BitstreamError::OpusError(opus::OpusError::NotOpusStream))
+            Err(BitstreamError::NotOpusStream)
         );
     }
 }
