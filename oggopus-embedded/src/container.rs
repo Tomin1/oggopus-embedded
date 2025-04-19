@@ -1,9 +1,8 @@
 /*
- * Ogg parsing code.
- *
  * Copyright (c) 2025 Tomi Leppänen
  * SPDX-License-Identifier: BSD-3-Clause
  */
+//! Ogg parsing code.
 
 use bitflags::bitflags;
 use core::num::NonZeroUsize;
@@ -15,21 +14,33 @@ use nom::{
 
 bitflags! {
     #[derive(Debug, PartialEq)]
-    pub struct HeaderFlags: u8 {
+    struct HeaderFlags: u8 {
         const Continuation = 0b001;
         const BeginOfStream = 0b010;
         const EndOfStream = 0b100;
     }
 }
 
+/// Error from parsing ogg container.
 #[derive(Debug, PartialEq)]
 pub enum OggError {
+    /// Unsupported ogg version.
     UnsupportedVersion(u8),
+    /// Parsing error from nom library.
     ParsingError(ErrorKind),
+    /// Stream ended abruptly.
     EndOfStreamError(Option<NonZeroUsize>),
+    /// Stream did not validate as ogg stream.
     InvalidStream(&'static str),
+    /// Stream is not supported, e.g. it contains a grouped stream.
     UnsupportedStream(&'static str),
+    /// Stream is not ogg stream.
     NotOggStream,
+    /**
+     * Buffer was too small to contain packet.
+     *
+     * Contains size of the buffer and how many bytes would have been actually needed.
+     */
     BufferTooSmallError(usize, usize),
 }
 
@@ -88,7 +99,7 @@ impl<'data> From<nom::Err<(&'data [u8], ErrorKind)>> for OggError {
     }
 }
 
-pub type Result<'data, O> = core::result::Result<(&'data [u8], O), OggError>;
+pub(crate) type Result<'data, O> = core::result::Result<(&'data [u8], O), OggError>;
 
 #[derive(Debug, PartialEq)]
 struct Segment {
@@ -148,7 +159,7 @@ struct PageHeader<'data> {
 }
 
 impl PageHeader<'_> {
-    pub fn parse(input: &[u8]) -> Result<PageHeader<'_>> {
+    fn parse(input: &[u8]) -> Result<PageHeader<'_>> {
         use OggError::*;
         let (input, _) = tag(b"OggS".as_slice())(input)
             .map_err(|_: nom::Err<(&[u8], ErrorKind)>| NotOggStream)?;
@@ -185,13 +196,13 @@ impl PageHeader<'_> {
 }
 
 #[derive(Debug, PartialEq)]
-pub struct Page<'data> {
+pub(crate) struct Page<'data> {
     header: PageHeader<'data>,
     pub data: &'data [u8],
 }
 
 impl Page<'_> {
-    pub fn parse(input: &[u8]) -> Result<'_, Page<'_>> {
+    fn parse(input: &[u8]) -> Result<'_, Page<'_>> {
         use OggError::*;
         let (data, header) = PageHeader::parse(input)?;
         if header.version != 0 {
@@ -225,15 +236,23 @@ impl Page<'_> {
         }
     }
 
+    /// Bitstream serial number for the page.
     pub fn bitstream_serial_number(&self) -> u32 {
         self.header.bitstream_serial_number
     }
 
+    /// Page sequence number for the page.
     pub fn page_sequence_number(&self) -> u32 {
         self.header.page_sequence_number
     }
 
-    pub fn skip(data: &[u8]) -> Result<'_, Page> {
+    /**
+     * Parse pages from data until end of page at packet boundary.
+     *
+     * Useful for skipping comment headers. Returns the last page which is useful for validating
+     * the stream.
+     */
+    pub(crate) fn skip(data: &[u8]) -> Result<'_, Page> {
         use OggError::*;
         let (mut remaining, mut page) = Self::parse(data)?;
         let mut page_sequence_number = page.page_sequence_number();
@@ -254,6 +273,12 @@ impl Page<'_> {
     }
 }
 
+/**
+ * Iterator for ogg packets.
+ *
+ * Note that this does not implement [`Iterator`] trait because it is not possible to borrow from
+ * iterator in [`Item`][`Iterator::Item`].
+ */
 #[derive(Debug, PartialEq)]
 pub struct Packets<'data, const BUFFER_SIZE: usize> {
     data: &'data [u8],
@@ -262,12 +287,15 @@ pub struct Packets<'data, const BUFFER_SIZE: usize> {
     buffer: [u8; BUFFER_SIZE],
 }
 
+/// Ogg packet.
 pub struct Packet<'buffer> {
+    /// Data in ogg packet.
     pub data: &'buffer [u8],
 }
 
 impl<const BUFFER_SIZE: usize> Packets<'_, BUFFER_SIZE> {
-    pub fn parse(data: &[u8]) -> Result<'_, Packets<'_, BUFFER_SIZE>> {
+    /// Parses input data for pages until a page that ends at packet boundary.
+    pub(crate) fn parse(data: &[u8]) -> Result<'_, Packets<'_, BUFFER_SIZE>> {
         use OggError::*;
         let (mut remaining, mut page) = Page::parse(data)?;
         let (mut max_segment, mut acc) = page.max_segment_size(0, 0);
@@ -302,10 +330,12 @@ impl<const BUFFER_SIZE: usize> Packets<'_, BUFFER_SIZE> {
         ))
     }
 
+    /// Returns page sequence number for the page being read.
     pub fn current_page_sequence_number(&self) -> u32 {
         self.page.page_sequence_number()
     }
 
+    /// Returns last page sequence number of the last page.
     pub fn last_page_sequence_number(&self) -> u32 {
         if self.data.is_empty() {
             self.current_page_sequence_number()
@@ -319,10 +349,12 @@ impl<const BUFFER_SIZE: usize> Packets<'_, BUFFER_SIZE> {
         }
     }
 
+    /// Returns bitstream serial number for the page being read.
     pub fn bitstream_serial_number(&self) -> u32 {
         self.page.bitstream_serial_number()
     }
 
+    /// Returns bitstream serial number of the last page.
     pub fn end_of_stream(&self) -> bool {
         self.page
             .header
@@ -330,6 +362,8 @@ impl<const BUFFER_SIZE: usize> Packets<'_, BUFFER_SIZE> {
             .contains(HeaderFlags::EndOfStream)
     }
 
+    /// Iterates to the next packet and returns it, or [`None`] if the last packet has been read.
+    #[allow(clippy::should_implement_trait)]
     pub fn next(&mut self) -> Option<Packet<'_>> {
         let mut buf = 0;
         loop {

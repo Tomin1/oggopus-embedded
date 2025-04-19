@@ -2,9 +2,7 @@
  * Copyright (c) 2025 Tomi Leppänen
  * SPDX-License-Identifier: BSD-3-Clause
  */
-/*!
- * Opus parsing code.
- */
+//! Opus parsing code.
 
 use core::num::NonZeroUsize;
 use nom::{bytes::complete::tag, error::ErrorKind, number, Parser};
@@ -165,7 +163,7 @@ impl ChannelMapping {
     /**
      * Get channel mapping for given channel index.
      *
-     * Returns None for invalid channel indexes.
+     * Returns [`None`] for invalid channel indexes.
      */
     pub fn get_mapping(&self, channel: u8) -> Option<Mapping> {
         use ChannelMapping::*;
@@ -280,7 +278,7 @@ pub enum DecodedChannel {
 /// Channel mapping for an audio channel.
 #[derive(Debug, PartialEq)]
 pub struct Mapping {
-    /// Stream index and decoded opus stream channel to use. Silent channel if None.
+    /// Stream index and decoded opus stream channel to use. Silent channel if [`None`].
     pub stream: Option<(u8, DecodedChannel)>,
     /// Speaker location for this index if available.
     pub speaker_location: Option<SpeakerLocation>,

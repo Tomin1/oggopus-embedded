@@ -28,11 +28,13 @@
 mod container;
 pub mod opus;
 
+pub use container::{OggError, Packet, Packets};
+
 /// Error from parsing bitstream.
 #[derive(Debug, PartialEq)]
 pub enum BitstreamError {
     /// Error from parsing ogg container.
-    OggError(container::OggError),
+    OggError(OggError),
     /// Error from parsing opus data within ogg container.
     OpusError(opus::OpusError),
     /// Invalid ogg stream encountered.
@@ -41,9 +43,18 @@ pub enum BitstreamError {
     InvalidOpusStream(&'static str),
     /// Unsupported opus version encountered. Indicates requested version.
     UnsupportedOpusVersion(u8),
-    /// Unsupported ogg opus stream encountered. Enabled features may affect this.
+    /**
+     * Unsupported ogg opus stream encountered. Enabled features may affect this.
+     *
+     * See also [`OpusError::UnsupportedStream`][`opus::OpusError::UnsupportedStream`]
+     * and [`OggError::UnsupportedStream`].
+     */
     UnsupportedStream(&'static str),
-    /// Stream is not an opus stream but something else.
+    /**
+     * Stream is not an opus stream but something else.
+     *
+     * See also [`OpusError::NotOpusStream`][`opus::OpusError::NotOpusStream`].
+     */
     NotOpusStream,
 }
 
@@ -75,9 +86,9 @@ impl core::error::Error for BitstreamError {
     }
 }
 
-impl From<container::OggError> for BitstreamError {
-    fn from(error: container::OggError) -> BitstreamError {
-        if let container::OggError::UnsupportedStream(error) = error {
+impl From<OggError> for BitstreamError {
+    fn from(error: OggError) -> BitstreamError {
+        if let OggError::UnsupportedStream(error) = error {
             Self::UnsupportedStream(error)
         } else {
             Self::OggError(error)
@@ -178,7 +189,7 @@ pub type EitherHeaderOrEnded<'bs, 'data> = (
 /// Packets with reader for the stream or stream ended.
 pub type EitherPacketsOrEnded<'bs, 'data, const BUFFER_SIZE: usize> = (
     Either<BitstreamReader<'bs, 'data, InStream>, BitstreamReader<'bs, 'data, EndOfStream>>,
-    container::Packets<'data, BUFFER_SIZE>,
+    Packets<'data, BUFFER_SIZE>,
 );
 
 /// Reader for [`Bitstream`].
@@ -236,7 +247,7 @@ impl<'bs, 'data> BitstreamReader<'bs, 'data, Beginning> {
             remaining,
             ..
         } = self;
-        let (remaining, mut packets) = container::Packets::<30>::parse(remaining)?;
+        let (remaining, mut packets) = Packets::<30>::parse(remaining)?;
         let bitstream_serial_number = packets.bitstream_serial_number();
         let page_sequence_number = packets.current_page_sequence_number();
         if page_sequence_number != 0 {
@@ -315,7 +326,7 @@ impl<'bs, 'data> BitstreamReader<'bs, 'data, InStream> {
         &self,
     ) -> Result<'data, EitherPacketsOrEnded<'bs, 'data, BUFFER_SIZE>> {
         use BitstreamError::*;
-        let (remaining, packets) = container::Packets::parse(self.remaining)?;
+        let (remaining, packets) = Packets::parse(self.remaining)?;
         if self.marker.bitstream_serial_number != packets.bitstream_serial_number() {
             return Err(UnsupportedStream(
                 "bitstream serial number changed unexpectedly",
@@ -437,9 +448,6 @@ mod test {
         const DATA: &[u8] = include_bytes!("test/vorbis.ogg");
         let bitstream = Bitstream::new(DATA);
         let reader = bitstream.reader();
-        assert_eq!(
-            reader.read_header(),
-            Err(BitstreamError::NotOpusStream)
-        );
+        assert_eq!(reader.read_header(), Err(BitstreamError::NotOpusStream));
     }
 }
