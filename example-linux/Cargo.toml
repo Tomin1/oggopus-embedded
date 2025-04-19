@@ -7,4 +7,4 @@ edition = "2021"
 [dependencies]
 alsa = "0.9.1"
 oggopus-embedded = { path = "../oggopus-embedded" }
-opus-embedded = { path = "../opus-embedded" }
+opus-embedded = { path = "../opus-embedded", features = ["stereo"] }

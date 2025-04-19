@@ -95,13 +95,17 @@ impl core::error::Error for InvalidPacket {
     }
 }
 
-/// Number of channels in this opus packet.
+/**
+ * Number of channels for opus decoder.
+ *
+ * Note that stereo decoders cannot be created if stereo feature has not been enabled.
+ */
 #[derive(Copy, Clone, Debug, Eq, PartialEq, IntoPrimitive, TryFromPrimitive)]
 #[repr(u8)]
 pub enum Channels {
-    /// Opus packet contains mono audio.
+    /// Select mono audio.
     Mono = 1,
-    /// Opus packet contains stereo audio. Samples are interleaved.
+    /// Select stereo audio. Samples are interleaved.
     Stereo = 2,
 }
 
@@ -116,6 +120,7 @@ impl Channels {
 }
 
 /// Opus decoder.
+#[derive(Debug)]
 pub struct Decoder {
     decoder: OpusDecoder,
 }
@@ -161,6 +166,10 @@ impl SamplingRate {
 impl Decoder {
     /// Construct decoder from requested sampling rate and number of channels.
     pub fn new(freq: SamplingRate, channels: Channels) -> Result<Self, DecoderError> {
+        if !cfg!(feature = "stereo") && channels == Channels::Stereo {
+            let error_code = OPUS_ALLOC_FAIL;
+            return Err(DecoderError { error_code });
+        }
         let channels = channels.channels().into();
         let mut decoder = Decoder {
             decoder: OpusDecoder::default(),
@@ -259,6 +268,7 @@ pub enum Bandwidth {
 }
 
 /// Wraps opus data into a packet type.
+#[derive(Debug)]
 pub struct OpusPacket<'data> {
     data: &'data [u8],
 }
@@ -352,8 +362,19 @@ mod tests {
 
     #[test]
     fn create_decoder() {
-        let decoder = Decoder::new(SamplingRate::F8k, Channels::Stereo);
+        let decoder = Decoder::new(SamplingRate::F8k, Channels::Mono);
         assert!(decoder.is_ok());
+    }
+
+    #[test]
+    fn create_decoder_stereo() {
+        let decoder = Decoder::new(SamplingRate::F16k, Channels::Stereo);
+        if cfg!(feature = "stereo") {
+            assert!(decoder.is_ok());
+        } else {
+            assert!(decoder.is_err());
+            assert_eq!(decoder.unwrap_err().numeric(), OPUS_ALLOC_FAIL);
+        }
     }
 
     #[test]

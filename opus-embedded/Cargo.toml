@@ -4,7 +4,10 @@ version = "0.1.0"
 license = "BSD-3-Clause"
 edition = "2021"
 
+[features]
+stereo = ["opus-embedded-sys/stereo"]
+
 [dependencies]
 az = "1.2.1"
 num_enum = { version = "0.7", default-features = false }
-opus-embedded-sys = { path = "sys" }
+opus-embedded-sys = { path = "sys", default-features = false }

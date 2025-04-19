@@ -6,5 +6,9 @@
  * <div rustbindgen replaces="OpusDecoder"></div>
  */
 struct OpusDecoder {
+#ifdef OPUS_EMBEDDED_SYS_STEREO
     char _unused[26580];
+#else
+    char _unused[17860];
+#endif
 };

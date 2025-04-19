@@ -30,6 +30,13 @@ mod tests {
 
     #[test]
     fn check_struct_size() {
-        assert_eq!(core::mem::size_of::<OpusDecoder>(), OPUS_DECODER_SIZE_CH2);
+        assert_eq!(
+            core::mem::size_of::<OpusDecoder>(),
+            if cfg!(feature = "stereo") {
+                OPUS_DECODER_SIZE_CH2
+            } else {
+                OPUS_DECODER_SIZE_CH1
+            }
+        );
     }
 }

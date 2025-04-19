@@ -76,6 +76,9 @@ fn main() {
             .allowlist_function("opus_decoder_create")
             .allowlist_function("opus_decoder_destroy");
     }
+    if cfg!(feature = "stereo") {
+        builder = builder.clang_arg("-DOPUS_EMBEDDED_SYS_STEREO");
+    }
     let bindings = builder.generate().expect("Unable to generate bindings");
 
     let out_path = PathBuf::from(env::var("OUT_DIR").unwrap());
