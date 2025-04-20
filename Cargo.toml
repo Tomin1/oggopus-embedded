@@ -1,0 +1,7 @@
+[workspace]
+resolver = "2"
+members = ["oggopus-embedded", "opus-embedded", "opus-embedded/sys", "example-linux"]
+
+[profile.release]
+opt-level = 3
+strip = true
