@@ -1,7 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["oggopus-embedded", "opus-embedded", "opus-embedded/sys", "example-linux"]
+members = ["oggopus-embedded", "opus-embedded", "opus-embedded/sys", "example-linux", "example-rp2040"]
 
 [profile.release]
 opt-level = 3
-strip = true

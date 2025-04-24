@@ -48,3 +48,10 @@ Example player
 --------------
 There is a small example player in example-linux directory. It is dumbed down
 to a fault but it can demonstrate that the libraries work.
+
+rp2040 example
+--------------
+There is a small example for rp2040 microcontroller found in Raspberry Pico. It
+uses I2S to play a mono audio sample. You must build it inside the directory,
+not in the workspace directory, otherwise cargo will not see the required
+configuration.

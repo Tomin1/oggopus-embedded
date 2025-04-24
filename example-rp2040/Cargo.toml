@@ -1,0 +1,22 @@
+[package]
+name = "example-rp2040"
+version = "0.1.0"
+license = "MIT"
+edition = "2024"
+publish = false
+
+[dependencies]
+cortex-m-rt = "0.7.5"
+defmt = "1.0.1"
+defmt-rtt = "1.0.0"
+embassy-executor = { version = "0.7.0", features = ["arch-cortex-m", "defmt", "executor-thread", "executor-interrupt", "task-arena-size-32768"] }
+embassy-rp = { version = "0.4.0", features = ["critical-section-impl", "defmt", "rp2040", "time-driver"] }
+embassy-time = "0.4.0"
+embassy-usb = { version = "0.4.0", features = ["defmt", "max-handler-count-1", "max-interface-count-2"], default-features = false }
+numtoa = "0.2.4"
+oggopus-embedded = { path = "../oggopus-embedded" }
+opus-embedded = { path = "../opus-embedded", features = ["stereo"] }
+panic-probe = { version = "1.0.0", features = ["print-defmt"] }
+portable-atomic = { version = "1.11.0", features = ["critical-section"] }
+static_cell = "2.1.0"
+tinyvec = "1.9.0"
