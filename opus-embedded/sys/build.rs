@@ -29,6 +29,8 @@ fn main() {
     }
     if env::var("CARGO_CFG_TARGET_OS").unwrap() == "none" {
         builder
+            .cflag("-D_FORTIFY_SOURCE=0")
+            .cflag("-DOVERRIDE_celt_fatal")
             .cflag("-DCUSTOM_SUPPORT")
             .cflag(format!("-I{}", src_path.to_str().unwrap()))
             .ldflag("-nostdlib");
