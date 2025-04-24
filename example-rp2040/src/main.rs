@@ -28,7 +28,7 @@ use defmt::{info, panic, unwrap};
 use embassy_executor::Spawner;
 use embassy_rp::bind_interrupts;
 use embassy_rp::gpio::{Level, Output};
-use embassy_rp::peripherals::{PIO0, USB};
+use embassy_rp::peripherals::{DMA_CH0, PIN_17, PIN_18, PIN_19, PIO0, USB};
 use embassy_rp::pio::{InterruptHandler as PioInterruptHandler, Pio};
 use embassy_rp::pio_programs::i2s::{PioI2sOut, PioI2sOutProgram};
 use embassy_rp::usb::{Driver, InterruptHandler as UsbInterruptHandler};
@@ -51,7 +51,6 @@ bind_interrupts!(struct UsbIrqs {
     USBCTRL_IRQ => UsbInterruptHandler<USB>;
 });
 
-const SAMPLING_RATE: SamplingRate = SamplingRate::F16k;
 const BIT_DEPTH: u32 = 16;
 const OUTPUT_CHANNELS: u32 = 2;
 
@@ -62,7 +61,7 @@ async fn print_header<'a>(
         .write_packet(b"frequency, channels, samples, ")
         .await?;
     class
-        .write_packet(b"\"sample time\", \"decode time\", \"playback time\"\n")
+        .write_packet(b"\"sample time\", \"decode time\", \"playback time\"\r\n")
         .await?;
     Ok(())
 }
@@ -110,10 +109,11 @@ async fn print_time<'a>(
     class
         .write_packet(playback_time.as_micros().numtoa(10, &mut buffer))
         .await?;
-    class.write_packet(b"\n").await?;
+    class.write_packet(b"\r\n").await?;
     Ok(())
 }
 
+#[derive(Debug)]
 struct Disconnected {}
 
 impl From<EndpointError> for Disconnected {
@@ -121,6 +121,172 @@ impl From<EndpointError> for Disconnected {
         match val {
             EndpointError::BufferOverflow => panic!("Buffer overflow"),
             EndpointError::Disabled => Disconnected {},
+        }
+    }
+}
+
+#[derive(Debug)]
+enum BitstreamType {
+    Bs8k,
+    Bs12k,
+    Bs16k,
+    Bs24k,
+    Bs32k,
+    Bs48k,
+    Bs64k,
+}
+
+#[derive(Debug, PartialEq)]
+enum Task {
+    BenchmarkAndPlay,
+    Benchmark,
+    Play,
+}
+
+#[derive(Debug)]
+struct Selections {
+    task: Task,
+    sampling_rate: SamplingRate,
+    bitstream_type: BitstreamType,
+}
+
+impl Selections {
+    async fn get<'a>(
+        class: &mut CdcAcmClass<'a, embassy_rp::usb::Driver<'a, USB>>,
+    ) -> Result<Self, Disconnected> {
+        let mut buffer = ArrayVec::<[u8; 128]>::default();
+        loop {
+            info!("Prompting");
+            class.write_packet(b"> ").await?;
+            let mut buf = [0; 64];
+            'buffering: loop {
+                info!("Waiting data");
+                let n = class.read_packet(&mut buf).await?;
+                if n > 0 {
+                    class.write_packet(&buf[..n]).await?;
+                    if buffer.len() + n > buffer.capacity() {
+                        // Cannot fit to command buffer => invalid command
+                        info!("Buffer would overflow {}", buffer.len() + n);
+                        buffer.clear();
+                        break;
+                    }
+                    for c in buf[..n].iter() {
+                        if *c == b'\n' || *c == b'\r' {
+                            // UTF-8 test
+                            if let Ok(command) = core::str::from_utf8(buffer.as_slice()) {
+                                info!("Got command '{}'", command);
+                            } else {
+                                // Weird characters => invalid command
+                                info!("Got weird characters: {}", buffer.as_slice());
+                                buffer.clear();
+                            }
+                            break 'buffering;
+                        } else if *c == 0x08 {
+                            // Backspace
+                            buffer.pop();
+                        } else {
+                            buffer.push(*c);
+                        }
+                    }
+                }
+            }
+            let mut command = buffer.as_ref().split(|c| *c == b' ');
+            let mut task = match command.next() {
+                Some(b"benchmark") => Task::BenchmarkAndPlay,
+                Some(b"play") => Task::Play,
+                Some(b"help") => {
+                    class.write_packet(b"Commands:\r\n").await?;
+                    class
+                        .write_packet(
+                            b"benchmark [-s] [8khz|16khz|24khz|48khz] [8k|12k|16k|24k|32k|64k]\r\n",
+                        )
+                        .await?;
+                    class
+                        .write_packet(b"play [8khz|16khz|24khz|48khz] [8k|12k|16k|24k|32k|64k]\r\n")
+                        .await?;
+                    buffer.clear();
+                    continue;
+                }
+                _ => {
+                    class.write_packet(b"Invalid command\r\n").await?;
+                    buffer.clear();
+                    continue;
+                }
+            };
+            let mut arg = command.next();
+            if task == Task::BenchmarkAndPlay && arg == Some(b"-s") {
+                // Silent benchmark
+                task = Task::Benchmark;
+                arg = command.next();
+            }
+            let sampling_rate = if let Some(freq) = arg {
+                if freq.ends_with(b"khz") {
+                    let sampling_rate = match freq {
+                        b"8khz" => SamplingRate::F8k,
+                        b"16khz" => SamplingRate::F16k,
+                        b"24khz" => SamplingRate::F24k,
+                        b"48khz" => SamplingRate::F48k,
+                        _ => {
+                            class.write_packet(b"Invalid command\r\n").await?;
+                            buffer.clear();
+                            continue;
+                        }
+                    };
+                    arg = command.next();
+                    sampling_rate
+                } else {
+                    SamplingRate::F16k
+                }
+            } else {
+                SamplingRate::F16k
+            };
+            let bitstream_type = match arg {
+                Some(b"8k") | None => BitstreamType::Bs8k,
+                Some(b"12k") => BitstreamType::Bs12k,
+                Some(b"16k") => BitstreamType::Bs16k,
+                Some(b"24k") => BitstreamType::Bs24k,
+                Some(b"32k") => BitstreamType::Bs32k,
+                Some(b"48k") => BitstreamType::Bs48k,
+                Some(b"64k") => BitstreamType::Bs64k,
+                _ => {
+                    class.write_packet(b"Invalid command\r\n").await?;
+                    buffer.clear();
+                    continue;
+                }
+            };
+            buffer.clear();
+            return Ok(Self {
+                task,
+                sampling_rate,
+                bitstream_type,
+            });
+        }
+    }
+
+    fn get_bitstream(&self) -> Bitstream<'static> {
+        use BitstreamType::*;
+        match self.bitstream_type {
+            Bs8k => Bitstream::new(include_bytes!("tone_440_8k.opus")),
+            Bs12k => Bitstream::new(include_bytes!("tone_440_12k.opus")),
+            Bs16k => Bitstream::new(include_bytes!("tone_440_16k.opus")),
+            Bs24k => Bitstream::new(include_bytes!("tone_440_24k.opus")),
+            Bs32k => Bitstream::new(include_bytes!("tone_440_32k.opus")),
+            Bs48k => Bitstream::new(include_bytes!("tone_440_48k.opus")),
+            Bs64k => Bitstream::new(include_bytes!("tone_440_64k.opus")),
+        }
+    }
+
+    fn benchmark(&self) -> bool {
+        match &self.task {
+            Task::BenchmarkAndPlay | Task::Benchmark => true,
+            Task::Play => false,
+        }
+    }
+
+    fn play(&self) -> bool {
+        match &self.task {
+            Task::BenchmarkAndPlay | Task::Play => true,
+            Task::Benchmark => false,
         }
     }
 }
@@ -178,37 +344,8 @@ async fn main(spawner: Spawner) {
     // Run the USB device.
     unwrap!(spawner.spawn(usb_task(usb)));
 
-    // Setup pio state machine for i2s output
-    info!("Initializing pio");
-    let Pio {
-        mut common, sm0, ..
-    } = Pio::new(p.PIO0, PioIrqs);
-
-    let bit_clock_pin = p.PIN_18;
-    let left_right_clock_pin = p.PIN_19;
-    let data_pin = p.PIN_17;
-
-    let program = PioI2sOutProgram::new(&mut common);
-    let mut i2s = PioI2sOut::new(
-        &mut common,
-        sm0,
-        p.DMA_CH0,
-        data_pin,
-        bit_clock_pin,
-        left_right_clock_pin,
-        SAMPLING_RATE as u32,
-        BIT_DEPTH,
-        OUTPUT_CHANNELS,
-        &program,
-    );
-
-    info!("Initializing decoding");
-
-    // Set SD pin up
-    let _sd = Output::new(p.PIN_16, Level::High);
-
-    // Include opus stream to decode
-    const STREAM: Bitstream = Bitstream::new(include_bytes!("tone_440_8k.opus"));
+    // Setup SD pin
+    let mut sd = Output::new(p.PIN_16, Level::Low);
 
     // Create two audio buffers (back and front) which will take turns being
     // filled with new audio data and being sent to the PIO FIFO using dma.
@@ -218,8 +355,47 @@ async fn main(spawner: Spawner) {
     let dma_buffer = DMA_BUFFER.init_with(|| [0u32; BUFFER_SIZE * 2]);
 
     loop {
+        // Wait for USB in case it had been disconnected
+        info!("Waiting for usb connection");
+        class.wait_connection().await;
+
+        let selections = match Selections::get(&mut class).await {
+            Ok(selections) => selections,
+            Err(_) => {
+                // Wrap back to waiting for connections on USB disconnects
+                continue;
+            }
+        };
+
+        // Setup pio state machine for i2s output
+        info!("Initializing pio");
+        let Pio {
+            mut common, sm0, ..
+        } = Pio::new(unsafe { PIO0::steal() }, PioIrqs);
+        let program = PioI2sOutProgram::new(&mut common);
+
+        let bit_clock_pin = unsafe { PIN_18::steal() };
+        let left_right_clock_pin = unsafe { PIN_19::steal() };
+        let data_pin = unsafe { PIN_17::steal() };
+        let mut i2s = PioI2sOut::new(
+            &mut common,
+            sm0,
+            unsafe { DMA_CH0::steal() },
+            data_pin,
+            bit_clock_pin,
+            left_right_clock_pin,
+            selections.sampling_rate as u32,
+            BIT_DEPTH,
+            OUTPUT_CHANNELS,
+            &program,
+        );
+
+        // Get opus stream to decode
+        info!("Initializing stream");
+        let stream = selections.get_bitstream();
+
         // Check headers that they are as expected
-        let (reader, header) = STREAM.reader().read_header().unwrap();
+        let (reader, header) = stream.reader().read_header().unwrap();
         let Either::Continued(mut reader) = reader else {
             panic!("Stream ended after header or comments packet");
         };
@@ -227,27 +403,40 @@ async fn main(spawner: Spawner) {
             panic!("Unsupported channel mapping family");
         };
         assert_eq!(channels, 1);
-        let mut pre_skip_done = false;
-        let mut pre_skip = 0usize;
+        let mut pre_skip = header.pre_skip as usize;
 
-        let row_header = create_row_header(SAMPLING_RATE, channels);
+        let mut row_header = ArrayVec::default();
+        if selections.benchmark() {
+            row_header = create_row_header(selections.sampling_rate, channels);
+        }
 
         // Create decoder, use stereo so we don't need to copy to get u32.
         // It could be useful in some cases, such as if we wanted to adjust volume.
-        let mut decoder = Decoder::new(SAMPLING_RATE, Channels::Stereo).unwrap();
+        info!("Initializing decoding");
+        let mut decoder = Decoder::new(selections.sampling_rate, Channels::Stereo).unwrap();
         let (mut back_buffer, mut front_buffer) = dma_buffer.split_at_mut(BUFFER_SIZE);
         let mut old_samples = 0;
         let mut samples_header = ArrayVec::default();
-
-        info!("Waiting for usb connection");
-        class.wait_connection().await;
 
         // Setup front buffer with silence
         front_buffer.fill(0);
         let mut samples = front_buffer.len();
 
+        // Trigger transfer of empty front buffer data to the PIO FIFO
+        // but don't await the returned future, yet
+        let mut dma_future = i2s.write(&front_buffer[0..samples]);
+
+        // Set SD pin to high for playback
+        if selections.play() {
+            sd.set_high();
+        } else {
+            sd.set_low();
+        }
+
         info!("Decoding the sample");
-        let _ = print_header(&mut class).await;
+        if selections.benchmark() && print_header(&mut class).await.is_err() {
+            continue;
+        }
         let mut prev_instant = Instant::now();
         'inner: loop {
             // Toggle led just to indicate that progress is being made
@@ -256,17 +445,8 @@ async fn main(spawner: Spawner) {
             // Get ogg packets to decode
             let (new_reader, mut packets) = reader.next_packets::<1024>().unwrap();
             while let Some(packet) = packets.next() {
-                // Trigger transfer of front buffer data to the PIO FIFO
-                // but don't await the returned future, yet
-                let dma_future = i2s.write(&front_buffer[pre_skip..samples]);
-                if !pre_skip_done {
-                    pre_skip = header.pre_skip as usize;
-                    pre_skip_done = true;
-                } else {
-                    pre_skip = 0;
-                }
-
                 // Fill back buffer with fresh audio samples before awaiting the dma future
+                info!("Decode new packet");
                 let start_of_decode = Instant::now();
                 assert!(decoder.get_nb_samples(packet.data).unwrap() <= back_buffer.len());
                 let decode_buffer: &mut [i16] = unsafe {
@@ -279,26 +459,48 @@ async fn main(spawner: Spawner) {
                         length * 2,
                     )
                 };
-                samples = decoder.decode(packet.data, decode_buffer).unwrap();
+                // Actual decoding happens here, this is the slow part
+                samples = match decoder.decode(packet.data, decode_buffer) {
+                    Err(_) => {
+                        let _ = class.write_packet(b"Decoding failed\r\n").await;
+                        break 'inner;
+                    }
+                    Ok(samples) => samples,
+                };
                 let end_of_decode = Instant::now();
-                if samples != old_samples {
-                    samples_header = create_samples_row_header(samples, SAMPLING_RATE);
-                    old_samples = samples;
+                if selections.benchmark() {
+                    if samples != old_samples {
+                        samples_header =
+                            create_samples_row_header(samples, selections.sampling_rate);
+                        old_samples = samples;
+                    }
+                    if print_time(
+                        &mut class,
+                        &row_header,
+                        &samples_header,
+                        end_of_decode - start_of_decode,
+                        end_of_decode - prev_instant,
+                    )
+                    .await
+                    .is_err()
+                    {
+                        break 'inner;
+                    };
+                } else {
+                    // TBH I'm not quite sure why this is needed
+                    let _ = class.write_packet(&[]).await;
                 }
-                let _ = print_time(
-                    &mut class,
-                    &row_header,
-                    &samples_header,
-                    end_of_decode - start_of_decode,
-                    end_of_decode - prev_instant,
-                )
-                .await;
+                prev_instant = end_of_decode;
 
-                // This needs to schedule next transfer in DMA QUEUE DEPTH / SAMPLE RATE time, i.e.
-                // in 8 / 16 000 Hz = 500 µs. After that there is 20 ms to queue the next.
+                // Now await the dma future. This ensures that the previous buffer has been
+                // consumed and there is now DMA QUEUE DEPTH / SAMPLING RATE, e.g. 8 / 48,000 Hz =
+                // 166 µs of time to send the next so it's queued immediately and get 20 ms time to
+                // process the next packet. One could also decode multiple packets at once and use
+                // some other multiple of 2.5 ms instead (this is determined by the encoder).
                 dma_future.await;
                 mem::swap(&mut back_buffer, &mut front_buffer);
-                prev_instant = end_of_decode;
+                dma_future = i2s.write(&front_buffer[pre_skip..samples]);
+                pre_skip = 0;
             }
 
             // Prepare reader for the next round if there is any
@@ -320,6 +522,9 @@ async fn main(spawner: Spawner) {
                 }
             }
         }
+
+        dma_future.await;
+        sd.set_low();
     }
 }
 
