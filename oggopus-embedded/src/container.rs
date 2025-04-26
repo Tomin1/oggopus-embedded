@@ -335,7 +335,7 @@ impl<const BUFFER_SIZE: usize> Packets<'_, BUFFER_SIZE> {
         self.page.page_sequence_number()
     }
 
-    /// Returns last page sequence number of the last page.
+    /// Returns page sequence number of the last page.
     pub fn last_page_sequence_number(&self) -> u32 {
         if self.data.is_empty() {
             self.current_page_sequence_number()
@@ -354,7 +354,7 @@ impl<const BUFFER_SIZE: usize> Packets<'_, BUFFER_SIZE> {
         self.page.bitstream_serial_number()
     }
 
-    /// Returns bitstream serial number of the last page.
+    /// Returns whether the current page is the end of the stream.
     pub fn end_of_stream(&self) -> bool {
         self.page
             .header
