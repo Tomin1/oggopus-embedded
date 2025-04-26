@@ -19,10 +19,11 @@ fn main() -> Result<(), Box<dyn core::error::Error>> {
     let stream_content = std::fs::read(std::env::args().nth(1).ok_or("Argument missing")?)?;
 
     let stream: Bitstream = Bitstream::new(stream_content.as_slice());
-    let (reader, header) = stream.reader().read_header()
+    let (reader, header) = stream
+        .reader()
+        .read_header()
         .inspect_err(|err| println!("Failed to read header or comments packet: {err:?}"))?;
-    let states::Either::Continued(mut reader) = reader
-    else {
+    let states::Either::Continued(mut reader) = reader else {
         return Err("Stream ended after header or comments packet".into());
     };
     let channels = match header.channels {
