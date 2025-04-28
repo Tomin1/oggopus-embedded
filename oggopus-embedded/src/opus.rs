@@ -7,6 +7,20 @@
 use core::num::NonZeroUsize;
 use nom::{bytes::complete::tag, error::ErrorKind, number, Parser};
 
+/// Error values for formatting.
+#[derive(Debug, PartialEq)]
+#[doc(hidden)]
+#[non_exhaustive]
+pub enum ErrorValues {
+    ZeroStreamCount,
+    BadNumberOfChannels(u8, u8),
+    InvalidChannelIndex(u8),
+    TotalStreamCountExceeds(u16),
+    StreamCountsMismatch(u8, u8),
+    BadTableLength(usize, u8),
+    TableTooBig(usize, u8),
+}
+
 /// Errors from parsing opus data.
 #[derive(Debug, PartialEq)]
 pub enum OpusError {
@@ -15,7 +29,7 @@ pub enum OpusError {
     /// Stream ended abruptly.
     EndOfStreamError(Option<NonZeroUsize>),
     /// Stream is not a valid opus stream, e.g. it has a value outside specifications.
-    InvalidStream(&'static str),
+    InvalidStream(ErrorValues),
     /// Stream is not supported. Enabled features may affect this.
     UnsupportedStream(&'static str),
     /// Stream is not an opus stream but something else.
@@ -35,7 +49,35 @@ impl core::fmt::Display for OpusError {
                 size
             ))?,
             EndOfStreamError(None) => f.write_fmt(format_args!("Opus stream ended abruptly"))?,
-            InvalidStream(issue) => f.write_fmt(format_args!("invalid stream: {}", issue))?,
+            InvalidStream(issue) => match issue {
+                ErrorValues::ZeroStreamCount => {
+                    f.write_str("stream count cannot be 0")?
+                }
+                ErrorValues::BadNumberOfChannels(family, channels) => f.write_fmt(format_args!(
+                    "bad number of channels for family {}: {}",
+                    family, channels
+                ))?,
+                ErrorValues::InvalidChannelIndex(index) => f.write_fmt(format_args!(
+                    "invalid channel index in channel mapping table: {}",
+                    index
+                ))?,
+                ErrorValues::TotalStreamCountExceeds(total) => f.write_fmt(format_args!(
+                    "total stream count cannot be more than 255: {}",
+                    total
+                ))?,
+                ErrorValues::StreamCountsMismatch(coupled_count, stream_count) => f.write_fmt(format_args!(
+                    "coupled stream count ({}) cannot be larger than stream count ({})",
+                    coupled_count, stream_count
+                ))?,
+                ErrorValues::BadTableLength(length, channels) => f.write_fmt(format_args!(
+                    "channel mapping table length does not match the number of channels ({}): {}",
+                    channels, length
+                ))?,
+                ErrorValues::TableTooBig(length, max_size) => f.write_fmt(format_args!(
+                    "channel mapping table does not fit to reserved space ({}), it is {} bytes long",
+                    max_size, length,
+                ))?,
+            },
             UnsupportedStream(issue) => {
                 f.write_fmt(format_args!("unsupported stream: {}", issue))?
             }
@@ -300,30 +342,32 @@ impl<const MAX_CHANNELS: usize> ChannelMappingTable<MAX_CHANNELS> {
         use OpusError::*;
         let (input, stream_count) = number::u8().parse(input)?;
         let (input, coupled_count) = number::u8().parse(input)?;
-        let total_stream_count = stream_count
-            .checked_add(coupled_count)
-            .ok_or(InvalidStream("total stream count cannot be more than 255"))?;
+        let total_stream_count = stream_count.checked_add(coupled_count).ok_or_else(|| {
+            let total = stream_count as u16 + coupled_count as u16;
+            InvalidStream(ErrorValues::TotalStreamCountExceeds(total))
+        })?;
         if stream_count == 0 {
-            Err(InvalidStream("stream count cannot be 0"))
+            Err(InvalidStream(ErrorValues::ZeroStreamCount))
         } else if coupled_count > stream_count {
-            Err(InvalidStream(
-                "coupled stream count cannot be larger than stream count",
-            ))
+            Err(InvalidStream(ErrorValues::StreamCountsMismatch(
+                coupled_count,
+                stream_count,
+            )))
         } else if input.len() != channels.into() {
-            Err(InvalidStream(
-                "channel mapping table length does not match the number of channels",
-            ))
+            Err(InvalidStream(ErrorValues::BadTableLength(
+                input.len(),
+                channels,
+            )))
         } else if input.len() > MAX_CHANNELS {
-            Err(InvalidStream(
-                "channel mapping table does not fit to reserved space",
-            ))
+            Err(InvalidStream(ErrorValues::TableTooBig(
+                input.len(),
+                MAX_CHANNELS as u8, // At most 255
+            )))
         } else {
             let mut mapping = [0; MAX_CHANNELS];
             for (i, &v) in input.iter().enumerate() {
                 if v >= total_stream_count && v != 255 {
-                    return Err(InvalidStream(
-                        "invalid channel index in channel mapping table",
-                    ));
+                    return Err(InvalidStream(ErrorValues::InvalidChannelIndex(v)));
                 }
                 mapping[i] = v;
             }
@@ -371,14 +415,14 @@ impl OpusHeader {
         let channels = match channel_mapping_family {
             0 => match channels {
                 1..=2 => ChannelMapping::Family0 { channels },
-                _ => return Err(InvalidStream("bad number of channels for family 0")),
+                _ => return Err(InvalidStream(ErrorValues::BadNumberOfChannels(0, channels))),
             },
             1 => match channels {
                 1..=8 => ChannelMapping::Family1 {
                     channels,
                     table: ChannelMappingTable::parse(channel_mapping_table, channels)?,
                 },
-                _ => return Err(InvalidStream("bad number of channels for family 1")),
+                _ => return Err(InvalidStream(ErrorValues::BadNumberOfChannels(1, channels))),
             },
             #[cfg(feature = "family255")]
             255 => ChannelMapping::Family255 {
@@ -454,18 +498,18 @@ mod test {
         let result = OpusHeader::parse(&data);
         assert_eq!(
             result,
-            Err(OpusError::InvalidStream(
-                "bad number of channels for family 0"
-            ))
+            Err(OpusError::InvalidStream(ErrorValues::BadNumberOfChannels(
+                0, 0
+            )))
         );
         assert!(result.unwrap_err().source().is_none());
         data[0x12] = 1;
         let result = OpusHeader::parse(&data);
         assert_eq!(
             result,
-            Err(OpusError::InvalidStream(
-                "bad number of channels for family 1"
-            ))
+            Err(OpusError::InvalidStream(ErrorValues::BadNumberOfChannels(
+                1, 0
+            )))
         );
         assert!(result.unwrap_err().source().is_none());
     }

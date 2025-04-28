@@ -4,6 +4,7 @@
  */
 //! Ogg parsing code.
 
+use super::ErrorValues;
 use bitflags::bitflags;
 use core::num::NonZeroUsize;
 use nom::{
@@ -31,7 +32,7 @@ pub enum OggError {
     /// Stream ended abruptly.
     EndOfStreamError(Option<NonZeroUsize>),
     /// Stream did not validate as ogg stream.
-    InvalidStream(&'static str),
+    InvalidStream(ErrorValues),
     /// Stream is not supported, e.g. it contains a grouped stream.
     UnsupportedStream(&'static str),
     /// Stream is not ogg stream.
@@ -60,7 +61,10 @@ impl core::fmt::Display for OggError {
                 size
             ))?,
             EndOfStreamError(None) => f.write_fmt(format_args!("Ogg stream ended abruptly"))?,
-            InvalidStream(issue) => f.write_fmt(format_args!("invalid Ogg stream: {}", issue))?,
+            InvalidStream(error) => {
+                f.write_str("invalid stream: ")?;
+                error.fmt(f)?;
+            }
             UnsupportedStream(error) => {
                 f.write_fmt(format_args!("unsupported stream: {}", error))?
             }
@@ -260,7 +264,10 @@ impl Page<'_> {
         while page.last_packet_continues() {
             (remaining, page) = Self::parse(remaining)?;
             if page.page_sequence_number() != page_sequence_number + 1 {
-                return Err(InvalidStream("page sequence numbers are not sequential"));
+                return Err(InvalidStream(ErrorValues::SequenceNumberMismatch(
+                    page_sequence_number,
+                    page.page_sequence_number(),
+                )));
             }
             page_sequence_number = page.page_sequence_number();
             if page.bitstream_serial_number() != bitstream_serial_number {
@@ -305,7 +312,10 @@ impl<const BUFFER_SIZE: usize> Packets<'_, BUFFER_SIZE> {
             (remaining, page) = Page::parse(remaining)?;
             (max_segment, acc) = page.max_segment_size(max_segment, acc);
             if page.page_sequence_number() != page_sequence_number + 1 {
-                return Err(InvalidStream("page sequence numbers are not sequential"));
+                return Err(InvalidStream(ErrorValues::SequenceNumberMismatch(
+                    page_sequence_number,
+                    page.page_sequence_number(),
+                )));
             }
             page_sequence_number = page.page_sequence_number();
             if page.bitstream_serial_number() != bitstream_serial_number {
@@ -517,7 +527,7 @@ mod test {
         assert_eq!(
             result,
             Err(OggError::InvalidStream(
-                "page sequence numbers are not sequential"
+                ErrorValues::SequenceNumberMismatch(16, 9)
             ))
         );
         assert!(result.unwrap_err().source().is_none());
@@ -525,7 +535,7 @@ mod test {
         assert_eq!(
             result,
             Err(OggError::InvalidStream(
-                "page sequence numbers are not sequential"
+                ErrorValues::SequenceNumberMismatch(16, 9)
             ))
         );
         assert!(result.unwrap_err().source().is_none());

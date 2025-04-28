@@ -30,6 +30,31 @@ pub mod opus;
 
 pub use container::{OggError, Packet, Packets};
 
+/// Error values for formatting.
+#[derive(Debug, PartialEq)]
+#[doc(hidden)]
+#[non_exhaustive]
+pub enum ErrorValues {
+    UnexpectedSequenceNumber(u32),
+    SequenceNumberMismatch(u32, u32),
+}
+
+impl core::fmt::Display for ErrorValues {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        use ErrorValues::*;
+        match &self {
+            UnexpectedSequenceNumber(number) => f.write_fmt(format_args!(
+                "unexpected page sequence number in header: {}",
+                number
+            )),
+            SequenceNumberMismatch(previous, current) => f.write_fmt(format_args!(
+                "page sequence numbers are not sequential, previous: {}, current: {}",
+                previous, current,
+            )),
+        }
+    }
+}
+
 /// Error from parsing bitstream.
 #[derive(Debug, PartialEq)]
 pub enum BitstreamError {
@@ -38,7 +63,7 @@ pub enum BitstreamError {
     /// Error from parsing opus data within ogg container.
     OpusError(opus::OpusError),
     /// Invalid ogg stream encountered.
-    InvalidOggStream(&'static str),
+    InvalidOggStream(ErrorValues),
     /// Invalid opus stream encountered.
     InvalidOpusStream(&'static str),
     /// Unsupported opus version encountered. Indicates requested version.
@@ -64,7 +89,10 @@ impl core::fmt::Display for BitstreamError {
         match self {
             OggError(error) => error.fmt(f),
             OpusError(error) => error.fmt(f),
-            InvalidOggStream(error) => f.write_str(error),
+            InvalidOggStream(error) => {
+                f.write_str("invalid ogg stream: ")?;
+                error.fmt(f)
+            }
             InvalidOpusStream(error) => f.write_str(error),
             UnsupportedOpusVersion(version) => {
                 f.write_fmt(format_args!("unsupported Opus version: {}", version))
@@ -88,10 +116,10 @@ impl core::error::Error for BitstreamError {
 
 impl From<OggError> for BitstreamError {
     fn from(error: OggError) -> BitstreamError {
-        if let OggError::UnsupportedStream(error) = error {
-            Self::UnsupportedStream(error)
-        } else {
-            Self::OggError(error)
+        match error {
+            OggError::UnsupportedStream(error) => Self::UnsupportedStream(error),
+            OggError::InvalidStream(error) => Self::InvalidOggStream(error),
+            _ => Self::OggError(error),
         }
     }
 }
@@ -251,9 +279,9 @@ impl<'bs, 'data> BitstreamReader<'bs, 'data, Beginning> {
         let bitstream_serial_number = packets.bitstream_serial_number();
         let page_sequence_number = packets.current_page_sequence_number();
         if page_sequence_number != 0 {
-            return Err(InvalidOggStream(
-                "unexpected page sequence number in header",
-            ));
+            return Err(InvalidOggStream(ErrorValues::UnexpectedSequenceNumber(
+                page_sequence_number,
+            )));
         }
         if let Some(packet) = packets.next() {
             let header = opus::OpusHeader::parse(packet.data)?;
@@ -333,9 +361,10 @@ impl<'bs, 'data> BitstreamReader<'bs, 'data, InStream> {
             ));
         }
         if packets.current_page_sequence_number() != self.marker.page_sequence_number + 1 {
-            return Err(InvalidOggStream(
-                "page sequence numbers are not sequential for data",
-            ));
+            return Err(InvalidOggStream(ErrorValues::SequenceNumberMismatch(
+                self.marker.page_sequence_number,
+                packets.current_page_sequence_number(),
+            )));
         }
         if !packets.end_of_stream() {
             Ok((
