@@ -37,6 +37,9 @@ fn main() {
             .cflag(format!("-I{}", src_path.to_str().unwrap()))
             .ldflag("-nostdlib");
     }
+    if cfg!(feature = "optimize_libopus") {
+        builder.cflag("-O3");
+    }
     let dst = builder.build();
     println!(
         "cargo:rustc-link-search=native={}",

@@ -5,6 +5,8 @@ license = "BSD-3-Clause"
 edition = "2021"
 
 [features]
+default = ["optimize_libopus"]
+optimize_libopus = ["opus-embedded-sys/optimize_libopus"]
 stereo = ["opus-embedded-sys/stereo"]
 
 [dependencies]
