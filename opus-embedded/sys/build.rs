@@ -19,11 +19,13 @@ fn main() {
         .disable("extra-programs", None)
         .disable("float-api", None)
         .enable("fixed-point", None);
-    if env::var("CARGO_CFG_TARGET_ARCH").unwrap() == "arm" {
-        // TODO: Should be "thumbv6m"
+    if env::var("TARGET").unwrap().starts_with("thumbv6m-") {
         // No assembly implementation without SMULL (32-bit multiply with 64-bit result)
-        // instruction that does not exist on Cortex-{M0,M0+,M1} (thumbv6m)
+        // instruction that does not exist on Cortex-{M0,M0+,M1} (thumbv6m).
+        // However optimizations seem to do a reasonable job here.
         builder.disable("asm", None);
+    }
+    if env::var("TARGET").unwrap().starts_with("thumbv7m-") {
         // Fails on Cortex-M3 (thumbv7m), disable CPU detection on embedded
         builder.disable("rtcd", None);
     }
