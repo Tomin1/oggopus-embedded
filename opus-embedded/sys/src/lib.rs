@@ -3,8 +3,9 @@
  * SPDX-License-Identifier: BSD-3-Clause
  */
 /*!
- * Minimal bindings for opus decoder
+ * Minimal bindings for opus decoder.
  *
+ * Focused on no_alloc use on embedded ARM platforms.
  */
 
 #![allow(non_camel_case_types)]
