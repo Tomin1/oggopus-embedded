@@ -281,7 +281,7 @@ impl ChannelMapping {
 }
 
 /// Speaker location in audio setup.
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum SpeakerLocation {
     /// Mono speaker.
@@ -307,7 +307,7 @@ pub enum SpeakerLocation {
 }
 
 /// Decoded opus channel to use for this audio channel.
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum DecodedChannel {
     /// The opus stream will be mono audio.
     Mono,
@@ -459,16 +459,238 @@ mod test {
     #[test]
     fn parse_header() {
         let data = include_bytes!("test/opus.data");
-        let page = OpusHeader::parse(data).unwrap();
-        assert_eq!(page.version, 1);
-        if let ChannelMapping::Family0 { channels } = page.channels {
+        let header = OpusHeader::parse(data).unwrap();
+        assert_eq!(header.version, 1);
+        if let ChannelMapping::Family0 { channels } = header.channels {
             assert_eq!(channels, 1);
         } else {
             panic!("Channel mapping family must be 0");
         }
-        assert_eq!(page.pre_skip, 312);
-        assert_eq!(page.sample_rate, 8_000);
-        assert_eq!(page.output_gain, 0);
+        assert_eq!(header.pre_skip, 312);
+        assert_eq!(header.sample_rate, 8_000);
+        assert_eq!(header.output_gain, 0);
+    }
+
+    #[test]
+    fn family_0_mono() {
+        let channels = ChannelMapping::Family0 { channels: 1 };
+        assert_eq!(channels.get_channel_count(), 1);
+        assert_eq!(channels.get_stream_count(), 1);
+        assert_eq!(channels.get_coupled_stream_count(), 0);
+        let mapping = channels.get_mapping(0).unwrap();
+        assert_eq!(mapping.stream, Some((0, DecodedChannel::Mono)));
+        assert_eq!(mapping.speaker_location, Some(SpeakerLocation::Mono));
+        for index in 1..=255 {
+            assert_eq!(channels.get_mapping(index), None);
+        }
+    }
+
+    #[test]
+    fn family_0_stereo() {
+        let channels = ChannelMapping::Family0 { channels: 2 };
+        assert_eq!(channels.get_channel_count(), 2);
+        assert_eq!(channels.get_stream_count(), 1);
+        assert_eq!(channels.get_coupled_stream_count(), 1);
+        let mapping = channels.get_mapping(0).unwrap();
+        assert_eq!(mapping.stream, Some((0, DecodedChannel::Left)));
+        assert_eq!(mapping.speaker_location, Some(SpeakerLocation::Left));
+        let mapping = channels.get_mapping(1).unwrap();
+        assert_eq!(mapping.stream, Some((0, DecodedChannel::Right)));
+        assert_eq!(mapping.speaker_location, Some(SpeakerLocation::Right));
+        for index in 2..=255 {
+            assert_eq!(channels.get_mapping(index), None);
+        }
+    }
+
+    #[test]
+    fn family_1_stereo() {
+        let channels = ChannelMapping::Family1 {
+            channels: 2,
+            table: ChannelMappingTable::parse(&[1, 1, 0, 1], 2).unwrap(),
+        };
+        assert_eq!(channels.get_channel_count(), 2);
+        assert_eq!(channels.get_stream_count(), 1);
+        assert_eq!(channels.get_coupled_stream_count(), 1);
+        let mapping = channels.get_mapping(0).unwrap();
+        assert_eq!(mapping.stream, Some((0, DecodedChannel::Left)));
+        assert_eq!(mapping.speaker_location, Some(SpeakerLocation::Left));
+        let mapping = channels.get_mapping(1).unwrap();
+        assert_eq!(mapping.stream, Some((0, DecodedChannel::Right)));
+        assert_eq!(mapping.speaker_location, Some(SpeakerLocation::Right));
+        for index in 2..=255 {
+            assert_eq!(channels.get_mapping(index), None);
+        }
+    }
+
+    #[test]
+    fn family_1_surround_5_1() {
+        let data: [u8; 0x08] = [0x04, 0x02, 0x00, 0x04, 0x01, 0x02, 0x03, 0x05];
+        let channels = ChannelMapping::Family1 {
+            channels: 6,
+            table: ChannelMappingTable::parse(&data, 6).unwrap(),
+        };
+        assert_eq!(channels.get_channel_count(), 6);
+        assert_eq!(channels.get_stream_count(), 4);
+        assert_eq!(channels.get_coupled_stream_count(), 2);
+        let mappings = [
+            (0, DecodedChannel::Left, SpeakerLocation::Left),
+            (2, DecodedChannel::Mono, SpeakerLocation::Center),
+            (0, DecodedChannel::Right, SpeakerLocation::Right),
+            (1, DecodedChannel::Left, SpeakerLocation::RearLeft),
+            (1, DecodedChannel::Right, SpeakerLocation::RearRight),
+            (3, DecodedChannel::Mono, SpeakerLocation::LFE),
+        ];
+        for (index, (stream, channel, location)) in mappings.iter().enumerate() {
+            let mapping = channels.get_mapping(index as u8).unwrap();
+            assert_eq!(mapping.stream, Some((*stream, *channel)));
+            assert_eq!(mapping.speaker_location, Some(*location));
+        }
+        for index in 6..=255 {
+            assert_eq!(channels.get_mapping(index), None);
+        }
+    }
+
+    #[test]
+    #[cfg(feature = "family255")]
+    fn family_255() {
+        let data: [u8; 0x08] = [0x04, 0x02, 0x00, 0x04, 0x01, 0x02, 0x03, 0x05];
+        let channels = ChannelMapping::Family255 {
+            channels: 6,
+            table: ChannelMappingTable::parse(&data, 6).unwrap(),
+        };
+        assert_eq!(channels.get_channel_count(), 6);
+        assert_eq!(channels.get_stream_count(), 4);
+        assert_eq!(channels.get_coupled_stream_count(), 2);
+        let mappings = [
+            (0, DecodedChannel::Left),
+            (2, DecodedChannel::Mono),
+            (0, DecodedChannel::Right),
+            (1, DecodedChannel::Left),
+            (1, DecodedChannel::Right),
+            (3, DecodedChannel::Mono),
+        ];
+        for (index, (stream, channel)) in mappings.iter().enumerate() {
+            let mapping = channels.get_mapping(index as u8).unwrap();
+            assert_eq!(mapping.stream, Some((*stream, *channel)));
+            assert_eq!(mapping.speaker_location, None);
+        }
+        for index in 6..=255 {
+            assert_eq!(channels.get_mapping(index), None);
+        }
+    }
+
+    #[test]
+    #[cfg(feature = "family255")]
+    fn family_reserved() {
+        let data: [u8; 0x06] = [0x02, 0x01, 0x01, 0x00, 0x02, 0xFF];
+        let channels = ChannelMapping::Reserved {
+            channels: 4,
+            table: ChannelMappingTable::parse(&data, 4).unwrap(),
+        };
+        assert_eq!(channels.get_channel_count(), 4);
+        assert_eq!(channels.get_stream_count(), 2);
+        assert_eq!(channels.get_coupled_stream_count(), 1);
+        let mappings = [
+            Some((0, DecodedChannel::Right)),
+            Some((0, DecodedChannel::Left)),
+            Some((1, DecodedChannel::Mono)),
+            None,
+        ];
+        for (index, stream) in mappings.iter().enumerate() {
+            let mapping = channels.get_mapping(index as u8).unwrap();
+            assert_eq!(mapping.stream, *stream);
+            assert_eq!(mapping.speaker_location, None);
+        }
+        for index in 4..=255 {
+            assert_eq!(channels.get_mapping(index), None);
+        }
+    }
+
+    #[test]
+    fn invalid_stream_count() {
+        let data: [u8; 0x08] = [0x04, 0x05, 0x00, 0x04, 0x01, 0x02, 0x03, 0x05];
+        let result = ChannelMappingTable::<255>::parse(&data, 6);
+        assert_eq!(
+            result,
+            Err(OpusError::InvalidStream(ErrorValues::StreamCountsMismatch(
+                5, 4
+            )))
+        );
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "coupled stream count (5) cannot be larger than stream count (4)"
+        );
+    }
+
+    #[test]
+    fn zero_stream_count() {
+        let data: [u8; 0x08] = [0x00, 0x01, 0x00, 0x04, 0x01, 0x02, 0x03, 0x05];
+        let result = ChannelMappingTable::<255>::parse(&data, 6);
+        assert_eq!(
+            result,
+            Err(OpusError::InvalidStream(ErrorValues::ZeroStreamCount))
+        );
+        assert_eq!(result.unwrap_err().to_string(), "stream count cannot be 0");
+    }
+
+    #[test]
+    fn invalid_table_length() {
+        let data: [u8; 0x08] = [0x04, 0x02, 0x00, 0x04, 0x01, 0x02, 0x03, 0x05];
+        let result = ChannelMappingTable::<255>::parse(&data, 2);
+        assert_eq!(
+            result,
+            Err(OpusError::InvalidStream(ErrorValues::BadTableLength(6, 2)))
+        );
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "channel mapping table length does not match the number of channels (2): 6"
+        );
+    }
+
+    #[test]
+    fn too_long_table() {
+        let data: [u8; 0x08] = [0x04, 0x02, 0x00, 0x04, 0x01, 0x02, 0x03, 0x05];
+        let result = ChannelMappingTable::<5>::parse(&data, 6);
+        assert_eq!(
+            result,
+            Err(OpusError::InvalidStream(ErrorValues::TableTooBig(6, 5)))
+        );
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "channel mapping table does not fit to reserved space (5), it is 6 bytes long"
+        );
+    }
+
+    #[test]
+    fn invalid_channel_index() {
+        let data: [u8; 0x08] = [0x04, 0x02, 0x00, 0xFF, 0x0A, 0x02, 0x03, 0x05];
+        let result = ChannelMappingTable::<255>::parse(&data, 6);
+        assert_eq!(
+            result,
+            Err(OpusError::InvalidStream(ErrorValues::InvalidChannelIndex(
+                0x0A
+            )))
+        );
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "invalid channel index in channel mapping table: 10"
+        );
+    }
+
+    #[test]
+    fn too_many_streams() {
+        let data: [u8; 0x02] = [0x90, 0x90];
+        let result = ChannelMappingTable::<5>::parse(&data, 6);
+        assert_eq!(
+            result,
+            Err(OpusError::InvalidStream(
+                ErrorValues::TotalStreamCountExceeds(0x90 * 2)
+            ))
+        );
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "total stream count cannot be more than 255: 288"
+        );
     }
 
     #[test]

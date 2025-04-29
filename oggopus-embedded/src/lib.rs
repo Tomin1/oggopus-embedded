@@ -447,17 +447,30 @@ impl<'bs, 'data> BitstreamReader<'bs, 'data, EndOfStream> {
 #[cfg(test)]
 mod test {
     use super::*;
+    use core::error::Error;
 
     #[test]
     fn parse_mono() {
         const DATA: &[u8] = include_bytes!("test/mono.opus");
         let bitstream = Bitstream::new(DATA);
         let reader = bitstream.reader();
-        let (_either, header) = reader.read_header().unwrap();
+        let (either, header) = reader.read_header().unwrap();
         assert_eq!(
             header.channels,
             opus::ChannelMapping::Family0 { channels: 1 }
         );
+        // Parsing a little bit to improve coverage as llvm-cov cannot run doctests without nightly
+        if let Either::Continued(reader) = either {
+            let (either, mut packets) = reader.next_packets::<512>().unwrap();
+            let result = packets.next();
+            assert!(result.is_some());
+            if let Either::Ended(reader) = either {
+                assert!(!reader.has_more());
+                assert!(reader.next_reader().is_none());
+            }
+        } else {
+            panic!("Unexpected end of stream in test");
+        }
     }
 
     #[test]
@@ -477,6 +490,72 @@ mod test {
         const DATA: &[u8] = include_bytes!("test/vorbis.ogg");
         let bitstream = Bitstream::new(DATA);
         let reader = bitstream.reader();
-        assert_eq!(reader.read_header(), Err(BitstreamError::NotOpusStream));
+        let result = reader.read_header();
+        assert_eq!(result, Err(BitstreamError::NotOpusStream));
+        let error = result.unwrap_err();
+        assert!(error.source().is_none());
+        assert_eq!(error.to_string(), "this is not an Opus stream");
+    }
+
+    #[test]
+    fn parse_invalid_stream() {
+        const DATA: &[u8] = &[0, 0, 0, 0];
+        let bitstream = Bitstream::new(DATA);
+        let reader = bitstream.reader();
+        let result = reader.read_header();
+        assert_eq!(
+            result,
+            Err(BitstreamError::OggError(OggError::NotOggStream))
+        );
+        let error = result.unwrap_err();
+        assert!(error.source().is_some());
+        assert_eq!(error.to_string(), "this is not an ogg stream");
+    }
+
+    #[test]
+    fn parse_unexpected_sequence_number() {
+        let mut data = Vec::from(include_bytes!("test/mono.opus"));
+        data[0x12] = 1;
+        let bitstream = Bitstream::new(&data);
+        let reader = bitstream.reader();
+        let result = reader.read_header();
+        assert_eq!(
+            result,
+            Err(BitstreamError::InvalidOggStream(
+                ErrorValues::UnexpectedSequenceNumber(1)
+            ))
+        );
+        let error = result.unwrap_err();
+        assert_eq!(
+            error.to_string(),
+            "invalid ogg stream: unexpected page sequence number in header: 1"
+        );
+    }
+
+    #[test]
+    fn parse_unsupported_ogg_version() {
+        let mut data = Vec::from(include_bytes!("test/mono.opus"));
+        data[4] = 2;
+        let bitstream = Bitstream::new(&data);
+        let reader = bitstream.reader();
+        let result = reader.read_header();
+        assert_eq!(
+            result,
+            Err(BitstreamError::OggError(OggError::UnsupportedVersion(2)))
+        );
+        let error = result.unwrap_err();
+        assert_eq!(error.to_string(), "unsupported ogg version: 2");
+    }
+
+    #[test]
+    fn parse_unsupported_opus_version() {
+        let mut data = Vec::from(include_bytes!("test/mono.opus"));
+        data[0x24] = 0x10;
+        let bitstream = Bitstream::new(&data);
+        let reader = bitstream.reader();
+        let result = reader.read_header();
+        assert_eq!(result, Err(BitstreamError::UnsupportedOpusVersion(16)));
+        let error = result.unwrap_err();
+        assert_eq!(error.to_string(), "unsupported Opus version: 16");
     }
 }

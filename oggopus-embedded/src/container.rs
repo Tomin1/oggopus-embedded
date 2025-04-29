@@ -50,17 +50,17 @@ impl core::fmt::Display for OggError {
         use OggError::*;
         match self {
             UnsupportedVersion(version) => {
-                f.write_fmt(format_args!("unsupported Ogg version: {}", version))?
+                f.write_fmt(format_args!("unsupported ogg version: {}", version))?
             }
             ParsingError(kind) => f.write_fmt(format_args!(
-                "parsing error with Ogg: {}",
+                "parsing error with ogg: {}",
                 kind.description()
             ))?,
             EndOfStreamError(Some(size)) => f.write_fmt(format_args!(
-                "Ogg stream ended abruptly with {} more bytes needed",
+                "ogg stream ended abruptly with {} more bytes needed",
                 size
             ))?,
-            EndOfStreamError(None) => f.write_fmt(format_args!("Ogg stream ended abruptly"))?,
+            EndOfStreamError(None) => f.write_fmt(format_args!("ogg stream ended abruptly"))?,
             InvalidStream(error) => {
                 f.write_str("invalid stream: ")?;
                 error.fmt(f)?;
@@ -68,7 +68,7 @@ impl core::fmt::Display for OggError {
             UnsupportedStream(error) => {
                 f.write_fmt(format_args!("unsupported stream: {}", error))?
             }
-            NotOggStream => f.write_str("this is not an Ogg stream")?,
+            NotOggStream => f.write_str("this is not an ogg stream")?,
             BufferTooSmallError(got, needed) => f.write_fmt(format_args!(
                 "buffer is too small: got {} but needed {}",
                 got, needed
@@ -449,6 +449,7 @@ mod test {
         let data = include_bytes!("test/split.ogg");
         let (remaining, mut packets) = Packets::<512>::parse(data).unwrap();
         assert_eq!(remaining.len(), 0);
+        assert_eq!(packets.last_page_sequence_number(), 17);
         let packet = packets.next().unwrap();
         assert_eq!(packet.data.len(), 300);
         for (i, (a, b)) in (0u8..=99)
@@ -472,6 +473,8 @@ mod test {
                 return Err(format!("{a} != {b} at {i}"));
             }
         }
+        assert_eq!(packets.last_page_sequence_number(), 17);
+        assert_eq!(packets.end_of_stream(), false);
         Ok(())
     }
 
@@ -480,6 +483,7 @@ mod test {
         let data = include_bytes!("test/single.ogg");
         let result = Page::parse(&data[..40]);
         assert_eq!(result, Err(OggError::EndOfStreamError(None)));
+        assert_eq!(result.unwrap_err().to_string(), "ogg stream ended abruptly");
     }
 
     #[test]
@@ -487,13 +491,20 @@ mod test {
         let data = include_bytes!("test/split.ogg");
         let result = Packets::<512>::parse(&data[..350]);
         assert_eq!(result, Err(OggError::EndOfStreamError(None)));
-        assert!(result.unwrap_err().source().is_none());
+        let error = result.unwrap_err();
+        assert!(error.source().is_none());
+        assert_eq!(error.to_string(), "ogg stream ended abruptly");
         let result = Packets::<512>::parse(&data[..300]);
         assert_eq!(
             result,
             Err(OggError::EndOfStreamError(Some(1.try_into().unwrap())))
         );
-        assert!(result.unwrap_err().source().is_none());
+        let error = result.unwrap_err();
+        assert!(error.source().is_none());
+        assert_eq!(
+            error.to_string(),
+            "ogg stream ended abruptly with 1 more bytes needed"
+        );
     }
 
     #[test]
@@ -502,7 +513,9 @@ mod test {
         data[4] = 1;
         let result = Page::parse(&data);
         assert_eq!(result, Err(OggError::UnsupportedVersion(1)));
-        assert!(result.unwrap_err().source().is_none());
+        let error = result.unwrap_err();
+        assert!(error.source().is_none());
+        assert_eq!(error.to_string(), "unsupported ogg version: 1");
     }
 
     #[test]
@@ -530,7 +543,12 @@ mod test {
                 ErrorValues::SequenceNumberMismatch(16, 9)
             ))
         );
-        assert!(result.unwrap_err().source().is_none());
+        let error = result.unwrap_err();
+        assert!(error.source().is_none());
+        assert_eq!(
+            error.to_string(),
+            "invalid stream: page sequence numbers are not sequential, previous: 16, current: 9"
+        );
         let result = Packets::<512>::parse(&data);
         assert_eq!(
             result,
@@ -538,7 +556,12 @@ mod test {
                 ErrorValues::SequenceNumberMismatch(16, 9)
             ))
         );
-        assert!(result.unwrap_err().source().is_none());
+        let error = result.unwrap_err();
+        assert!(error.source().is_none());
+        assert_eq!(
+            error.to_string(),
+            "invalid stream: page sequence numbers are not sequential, previous: 16, current: 9"
+        );
     }
 
     #[test]
@@ -552,7 +575,12 @@ mod test {
                 "bitstream serial number changed unexpectedly"
             ))
         );
-        assert!(result.unwrap_err().source().is_none());
+        let error = result.unwrap_err();
+        assert!(error.source().is_none());
+        assert_eq!(
+            error.to_string(),
+            "unsupported stream: bitstream serial number changed unexpectedly"
+        );
         let result = Packets::<512>::parse(&data);
         assert_eq!(
             result,
@@ -560,7 +588,12 @@ mod test {
                 "bitstream serial number changed unexpectedly"
             ))
         );
-        assert!(result.unwrap_err().source().is_none());
+        let error = result.unwrap_err();
+        assert!(error.source().is_none());
+        assert_eq!(
+            error.to_string(),
+            "unsupported stream: bitstream serial number changed unexpectedly"
+        );
     }
 
     #[test]
@@ -568,6 +601,11 @@ mod test {
         let data = include_bytes!("test/split.ogg");
         let result = Packets::<64>::parse(data);
         assert_eq!(result, Err(OggError::BufferTooSmallError(64, 300)));
-        assert!(result.unwrap_err().source().is_none());
+        let error = result.unwrap_err();
+        assert!(error.source().is_none());
+        assert_eq!(
+            error.to_string(),
+            "buffer is too small: got 64 but needed 300"
+        );
     }
 }
