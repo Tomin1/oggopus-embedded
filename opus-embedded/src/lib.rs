@@ -49,7 +49,7 @@ impl<E: RawOpusError> OpusError for E {
 }
 
 /// Error from decoding opus data.
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub struct DecoderError {
     error_code: c_int,
 }
@@ -74,7 +74,7 @@ impl core::error::Error for DecoderError {
 }
 
 /// Invalid opus data packet encountered.
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub struct InvalidPacket {}
 
 unsafe impl RawOpusError for InvalidPacket {
@@ -112,10 +112,7 @@ pub enum Channels {
 impl Channels {
     /// Return the number of channels.
     pub fn channels(&self) -> u8 {
-        match self {
-            Self::Mono => 1,
-            Self::Stereo => 2,
-        }
+        (*self).into()
     }
 }
 
@@ -198,7 +195,7 @@ impl Decoder {
     pub fn get_nb_samples(&self, data: &[u8]) -> Result<usize, InvalidPacket> {
         // SAFETY: Length is derived from input arrays
         let samples = unsafe {
-            let len = data.len().try_into().unwrap();
+            let len = data.len().saturating_as();
             let data = data.as_ptr();
             opus_decoder_get_nb_samples(&self.decoder, data, len)
         };
@@ -229,7 +226,7 @@ impl Decoder {
     pub fn decode(&mut self, data: &[u8], output: &mut [i16]) -> Result<usize, DecoderError> {
         // SAFETY: All lengths are derived from input arrays
         let samples = unsafe {
-            let len: i32 = data.len().try_into().unwrap();
+            let len: i32 = data.len().saturating_as();
             let data = data.as_ptr();
             let output_len = output.len();
             let output = output.as_mut_ptr();
@@ -253,7 +250,7 @@ impl Decoder {
 }
 
 /// Bandwidth in the opus data.
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, PartialEq)]
 pub enum Bandwidth {
     /// Narrowband data (4 kHz bandpass).
     Narrowband,
@@ -302,7 +299,7 @@ impl<'data> OpusPacket<'data> {
     pub fn get_nb_frames(&self) -> Result<u32, InvalidPacket> {
         // SAFETY: Length is derived from input array
         let frames = unsafe {
-            let len = self.data.len().try_into().unwrap();
+            let len = self.data.len().saturating_as();
             let data = self.data.as_ptr();
             opus_packet_get_nb_frames(data, len)
         };
@@ -343,7 +340,7 @@ impl<'data> OpusPacket<'data> {
     pub fn get_samples_per_frame(&self) -> Result<u32, InvalidPacket> {
         // SAFETY: Length is derived from input array
         let samples = unsafe {
-            let len = self.data.len().try_into().unwrap();
+            let len = self.data.len().saturating_as();
             let data = self.data.as_ptr();
             opus_packet_get_samples_per_frame(data, len)
         };
