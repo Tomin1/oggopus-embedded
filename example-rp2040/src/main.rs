@@ -134,6 +134,8 @@ enum BitstreamType {
     Bs32k,
     Bs48k,
     Bs64k,
+    #[cfg(feature = "custom")]
+    Custom,
 }
 
 #[derive(Debug, PartialEq)]
@@ -248,6 +250,8 @@ impl Selections {
                 Some(b"32k") => BitstreamType::Bs32k,
                 Some(b"48k") => BitstreamType::Bs48k,
                 Some(b"64k") => BitstreamType::Bs64k,
+                #[cfg(feature = "custom")]
+                Some(b"custom") => BitstreamType::Custom,
                 _ => {
                     class.write_packet(b"Invalid command\r\n").await?;
                     buffer.clear();
@@ -273,6 +277,8 @@ impl Selections {
             Bs32k => Bitstream::new(include_bytes!("tone_440_32k.opus")),
             Bs48k => Bitstream::new(include_bytes!("tone_440_48k.opus")),
             Bs64k => Bitstream::new(include_bytes!("tone_440_64k.opus")),
+            #[cfg(feature = "custom")]
+            Custom => Bitstream::new(include_bytes!("custom.opus")),
         }
     }
 
@@ -402,7 +408,6 @@ async fn main(spawner: Spawner) {
         let ChannelMapping::Family0 { channels } = header.channels else {
             panic!("Unsupported channel mapping family");
         };
-        assert_eq!(channels, 1);
         let mut pre_skip = header.pre_skip as usize;
 
         let mut row_header = ArrayVec::default();

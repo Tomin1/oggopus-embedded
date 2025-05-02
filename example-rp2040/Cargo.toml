@@ -5,6 +5,9 @@ license = "MIT"
 edition = "2024"
 publish = false
 
+[features]
+custom = []
+
 [dependencies]
 cortex-m-rt = "0.7.5"
 defmt = "1.0.1"

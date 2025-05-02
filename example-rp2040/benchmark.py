@@ -12,7 +12,7 @@ import serial
 
 def Bitrate(s):
     s = s.lower()
-    if s in ["8k", "12k", "16k", "24k", "32k", "48k", "64k"]:
+    if s in ["8k", "12k", "16k", "24k", "32k", "48k", "64k", "custom"]:
         return s
     raise ValueError
 
@@ -53,7 +53,10 @@ def get_output(command, serial_port, baudrate):
         s.flush()
         content = s.read_until(b"\r\n")
         assert content == command
-        return s.read_until(b"> ")
+        content = bytes()
+        while not content.endswith(b"> "):
+            content += s.read_until(b"> ")
+        return content
 
 
 def read_table(content):
@@ -111,7 +114,7 @@ def main():
         "--bitrate",
         type=Bitrate,
         default=None,
-        help="Select bitrate to decode, one of 8k, 12k, 16k, 24k, 32k, 48k and 64k",
+        help="Select bitrate to decode, one of 8k, 12k, 16k, 24k, 32k, 48k and 64k, or 'custom'",
     )
     bitrate_group.add_argument(
         "-m",
@@ -163,7 +166,8 @@ def main():
                 ]
             )
         df = pd.DataFrame(
-            data, columns=["bitrate", "real time", "mean", "variance", "minimum", "maximum"]
+            data,
+            columns=["bitrate", "real time", "mean", "variance", "minimum", "maximum"],
         )
         df["real time"] = df["real time"].map(lambda x: "yes" if x else "no")
         df["mean"] = df["mean"].map(lambda x: f"{x * 100:.1f} %")
@@ -174,6 +178,9 @@ def main():
     else:
         command = build_command(args)
         content = get_output(command, args.serial_port, args.baudrate)
+        if content.startswith(b"Invalid command"):
+            print(f"Cannot play '{args.bitrate}'")
+            return
         if not args.play_only:
             df = read_table(content[:-2].decode().replace("\r\n", "\n"))
             if args.print_table:
