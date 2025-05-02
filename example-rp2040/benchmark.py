@@ -8,6 +8,7 @@ import argparse
 import pandas as pd
 import io
 import serial
+from pathlib import Path
 
 
 def Bitrate(s):
@@ -137,6 +138,12 @@ def main():
         help="Print data frames collected from the device",
     )
     parser.add_argument(
+        "--save-table",
+        type=Path,
+        default=None,
+        help="Save data frames to file(s)",
+    )
+    parser.add_argument(
         "--baudrate",
         type=int,
         default=115200,
@@ -145,6 +152,8 @@ def main():
     args = parser.parse_args()
 
     if args.measure:
+        if args.save_table is not None:
+            args.save_table = open(args.save_table, "w")
         data = []
         for bitrate in ["8k", "12k", "16k", "24k", "32k", "48k", "64k"]:
             args.bitrate = bitrate
@@ -153,7 +162,11 @@ def main():
             df = read_table(content[:-2].decode().replace("\r\n", "\n"))
             if args.print_table:
                 print(f"With {bitrate[:-1]} kb/s")
-                print(df)
+                print(df.to_string())
+            if args.save_table is not None:
+                args.save_table.write(f"With {bitrate[:-1]} kb/s\n")
+                df.to_csv(args.save_table)
+                args.save_table.write("\n\n")
             decode_speed = df["sample time"] / df["decode time"]
             data.append(
                 [
@@ -165,6 +178,8 @@ def main():
                     decode_speed.max(),
                 ]
             )
+        if args.save_table:
+            args.save_table.close()
         df = pd.DataFrame(
             data,
             columns=["bitrate", "real time", "mean", "variance", "minimum", "maximum"],
@@ -184,7 +199,9 @@ def main():
         if not args.play_only:
             df = read_table(content[:-2].decode().replace("\r\n", "\n"))
             if args.print_table:
-                print(df)
+                print(df.to_string())
+            if args.save_table is not None:
+                df.to_csv(args.save_table)
             print_report(df)
 
 
