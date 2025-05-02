@@ -23,7 +23,7 @@ use opus_embedded_sys::*;
  */
 unsafe trait RawOpusError {
     /**
-     * Returns valid numeric error code defined by libopus
+     * Returns valid numeric error code defined by libopus.
      */
     fn numeric(&self) -> c_int;
 }
@@ -192,15 +192,22 @@ impl Decoder {
      *
      * This value can be used for allocating an output buffer for decoding.
      */
-    pub fn get_nb_samples(&self, data: &[u8]) -> Result<usize, InvalidPacket> {
-        // SAFETY: Length is derived from input arrays
+    pub fn get_nb_samples(&self, data: &[u8]) -> Result<usize, DecoderError> {
+        // SAFETY: The pointer points to a valid slice of data or null if the slice was empty.
+        // Length is derived from the input slice
         let samples = unsafe {
             let len = data.len().saturating_as();
-            let data = data.as_ptr();
+            let data = if !data.is_empty() {
+                data.as_ptr()
+            } else {
+                core::ptr::null()
+            };
             opus_decoder_get_nb_samples(&self.decoder, data, len)
         };
         if samples < 0 {
-            Err(InvalidPacket {})
+            Err(DecoderError {
+                error_code: samples,
+            })
         } else {
             Ok(samples.saturating_as())
         }
@@ -211,7 +218,7 @@ impl Decoder {
      *
      * Returns the number of decoded samples in the output buffer.
      *
-     * ```no_run
+     * ```
      * # use opus_embedded::{Decoder, SamplingRate, Channels};
      * # let data = [0, 0, 0, 0, 0, 0, 0];
      * # let data = data.as_slice();
@@ -224,20 +231,22 @@ impl Decoder {
      * ```
      */
     pub fn decode(&mut self, data: &[u8], output: &mut [i16]) -> Result<usize, DecoderError> {
-        // SAFETY: All lengths are derived from input arrays
+        // SAFETY: The pointers point to valid slices of data or null if their respective slice was
+        // empty. Lengths are derived from the respective slices
         let samples = unsafe {
             let len: i32 = data.len().saturating_as();
-            let data = data.as_ptr();
-            let output_len = output.len();
-            let output = output.as_mut_ptr();
-            opus_decode(
-                &mut self.decoder,
-                data,
-                len,
-                output,
-                output_len.saturating_as(),
-                0,
-            )
+            let data = if !data.is_empty() {
+                data.as_ptr()
+            } else {
+                core::ptr::null()
+            };
+            let output_len: i32 = output.len().saturating_as();
+            let output = if !output.is_empty() {
+                output.as_mut_ptr()
+            } else {
+                core::ptr::null_mut()
+            };
+            opus_decode(&mut self.decoder, data, len, output, output_len, 0)
         };
         if samples < 0 {
             Err(DecoderError {
@@ -275,20 +284,24 @@ impl<'data> OpusPacket<'data> {
      * Construct packet from data.
      *
      * Does not check for validity.
+     *
+     * # Panics
+     * Panics if data is an empty slice.
      */
     pub fn new(data: &'data [u8]) -> Self {
+        assert!(!data.is_empty());
         Self { data }
     }
 
     /// Return the number of channels for the packet.
     pub fn get_nb_channels(&self) -> Result<u8, InvalidPacket> {
-        // SAFETY: Raw data, libopus can deal with it
+        // SAFETY: The pointer points to a valid slice of data, and the size is not zero
         let channels = unsafe {
             let data = self.data.as_ptr();
             opus_packet_get_nb_channels(data)
         };
         if channels < 0 {
-            debug_assert!(channels == OPUS_INVALID_PACKET);
+            debug_assert_eq!(channels, OPUS_INVALID_PACKET);
             Err(InvalidPacket {})
         } else {
             Ok(channels.saturating_as())
@@ -297,14 +310,15 @@ impl<'data> OpusPacket<'data> {
 
     /// Return the number of frames for the packet.
     pub fn get_nb_frames(&self) -> Result<u32, InvalidPacket> {
-        // SAFETY: Length is derived from input array
+        // SAFETY: The pointer points to a valid slice of data, the length is derived from the
+        // slice and the slice is not empty
         let frames = unsafe {
             let len = self.data.len().saturating_as();
             let data = self.data.as_ptr();
             opus_packet_get_nb_frames(data, len)
         };
         if frames < 0 {
-            debug_assert!(frames == OPUS_INVALID_PACKET);
+            debug_assert_eq!(frames, OPUS_INVALID_PACKET);
             Err(InvalidPacket {})
         } else {
             Ok(frames.saturating_as())
@@ -313,13 +327,13 @@ impl<'data> OpusPacket<'data> {
 
     /// Return the bandwidth of the packet.
     pub fn get_bandwidth(&self) -> Result<Bandwidth, InvalidPacket> {
-        // SAFETY: Raw data, libopus can deal with it
+        // SAFETY: The pointer points to a valid slice of data, and the size is not zero
         let bandwidth = unsafe {
             let data = self.data.as_ptr();
             opus_packet_get_bandwidth(data)
         };
         if bandwidth < 0 {
-            debug_assert!(bandwidth == OPUS_INVALID_PACKET);
+            debug_assert_eq!(bandwidth, OPUS_INVALID_PACKET);
             Err(InvalidPacket {})
         } else {
             use Bandwidth::*;
@@ -338,14 +352,15 @@ impl<'data> OpusPacket<'data> {
 
     /// Return the number of sampels per frame in the packet.
     pub fn get_samples_per_frame(&self) -> Result<u32, InvalidPacket> {
-        // SAFETY: Length is derived from input array
+        // SAFETY: The pointer points to a valid slice of data, the length is derived from the
+        // slice and the slice is not empty
         let samples = unsafe {
             let len = self.data.len().saturating_as();
             let data = self.data.as_ptr();
             opus_packet_get_samples_per_frame(data, len)
         };
         if samples < 0 {
-            debug_assert!(samples == OPUS_INVALID_PACKET);
+            debug_assert_eq!(samples, OPUS_INVALID_PACKET);
             Err(InvalidPacket {})
         } else {
             Ok(samples.saturating_as())
@@ -355,7 +370,10 @@ impl<'data> OpusPacket<'data> {
 
 #[cfg(test)]
 mod tests {
+    extern crate alloc;
     use super::*;
+    use alloc::string::ToString;
+    use core::error::Error;
 
     #[test]
     fn create_decoder() {
@@ -381,5 +399,159 @@ mod tests {
         assert_eq!(SamplingRate::closest(16_000), SamplingRate::F16k);
         assert_eq!(SamplingRate::closest(24_000), SamplingRate::F24k);
         assert_eq!(SamplingRate::closest(48_000), SamplingRate::F48k);
+    }
+
+    #[test]
+    fn sampling_rate_from_primitive() {
+        assert!(SamplingRate::try_from(1_000).is_err());
+        assert!(SamplingRate::try_from(8_000).is_ok());
+        assert!(SamplingRate::try_from(12_000).is_ok());
+        assert!(SamplingRate::try_from(16_000).is_ok());
+        assert!(SamplingRate::try_from(24_000).is_ok());
+        assert!(SamplingRate::try_from(48_000).is_ok());
+        assert!(SamplingRate::try_from(64_000).is_err());
+    }
+
+    #[test]
+    fn channels_from_primitive() {
+        assert!(Channels::try_from(0).is_err());
+        assert!(Channels::try_from(1).is_ok());
+        assert!(Channels::try_from(2).is_ok());
+        for channels in 3..=255 {
+            assert!(Channels::try_from(channels).is_err());
+        }
+    }
+
+    #[test]
+    fn test_decoder_with_zero_length_packet() {
+        // NB: Error strings depend on libopus internal error messages.
+        const DATA: [u8; 0] = [0u8; 0];
+        let mut decoder = Decoder::new(SamplingRate::F8k, Channels::Mono).unwrap();
+        let result = decoder.get_nb_samples(&DATA);
+        assert_eq!(
+            result,
+            Err(DecoderError {
+                error_code: OPUS_BAD_ARG
+            })
+        );
+        let error = result.unwrap_err();
+        assert_eq!(error.numeric(), OPUS_BAD_ARG);
+        assert!(error.source().is_none());
+        assert_eq!(error.to_string(), "invalid argument");
+        // Passing empty slice (-> null) is a valid input for decoding
+        let mut output = [0i16; 100];
+        let result = decoder.decode(&DATA, &mut output);
+        assert_eq!(result, Ok(output.len()));
+        for v in output {
+            assert_eq!(v, 0);
+        }
+        // However empty slice for output is not
+        let mut output = [0i16; 0];
+        let result = decoder.decode(&[0, 0, 0, 0, 0], &mut output);
+        assert_eq!(
+            result,
+            Err(DecoderError {
+                error_code: OPUS_BAD_ARG
+            })
+        );
+        let error = result.unwrap_err();
+        assert_eq!(error.numeric(), OPUS_BAD_ARG);
+        assert!(error.source().is_none());
+        assert_eq!(error.to_string(), "invalid argument");
+    }
+
+    #[test]
+    fn test_decoder_with_zero_packet() {
+        const DATA: [u8; 8] = [0x00u8; 8];
+        let mut decoder = Decoder::new(SamplingRate::F8k, Channels::Mono).unwrap();
+        assert_eq!(decoder.get_nb_samples(&DATA), Ok(80));
+        let mut output = [0i16; 80];
+        assert_eq!(decoder.decode(&DATA, &mut output), Ok(80));
+    }
+
+    #[test]
+    fn test_decoder_with_0xff_packet() {
+        const DATA: [u8; 8] = [0xffu8; 8];
+        let mut decoder = Decoder::new(SamplingRate::F8k, Channels::Mono).unwrap();
+        let result = decoder.get_nb_samples(&DATA);
+        assert_eq!(
+            result,
+            Err(DecoderError {
+                error_code: OPUS_INVALID_PACKET
+            })
+        );
+        let error = result.unwrap_err();
+        assert_eq!(error.numeric(), OPUS_INVALID_PACKET);
+        assert!(error.source().is_none());
+        assert_eq!(error.to_string(), "corrupted stream");
+        let mut output = [0i16; 80];
+        let result = decoder.decode(&DATA, &mut output);
+        assert_eq!(
+            result,
+            Err(DecoderError {
+                error_code: OPUS_INVALID_PACKET
+            })
+        );
+        let error = result.unwrap_err();
+        assert_eq!(error.numeric(), OPUS_INVALID_PACKET);
+        assert!(error.source().is_none());
+        assert_eq!(error.to_string(), "corrupted stream");
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_zero_length_packet() {
+        const DATA: [u8; 0] = [0u8; 0];
+        let _packet = OpusPacket::new(&DATA);
+    }
+
+    #[test]
+    fn test_zero_packet() {
+        let data = [0x00u8; 8];
+        let packet = OpusPacket::new(&data);
+        assert_eq!(packet.get_nb_channels(), Ok(1));
+        assert_eq!(packet.get_nb_frames(), Ok(1));
+        assert_eq!(packet.get_bandwidth(), Ok(Bandwidth::Narrowband));
+        assert_eq!(packet.get_samples_per_frame(), Ok(0));
+    }
+
+    #[test]
+    fn test_0xff_packet() {
+        let data = [0xFFu8; 8];
+        let packet = OpusPacket::new(&data);
+        assert_eq!(packet.get_nb_channels(), Ok(2));
+        assert_eq!(packet.get_nb_frames(), Ok(63));
+        assert_eq!(packet.get_bandwidth(), Ok(Bandwidth::Fullband));
+        assert_eq!(packet.get_samples_per_frame(), Ok(0));
+    }
+
+    #[test]
+    fn test_one_length_packet() {
+        // Something that returns OPUS_INVALID_PACKET
+        let packet = OpusPacket::new(&[0xff]);
+        assert_eq!(packet.get_nb_channels(), Ok(2));
+        let result = packet.get_nb_frames();
+        assert_eq!(result, Err(InvalidPacket {}));
+        let error = result.unwrap_err();
+        assert_eq!(error.numeric(), OPUS_INVALID_PACKET);
+        assert!(error.source().is_none());
+        assert_eq!(error.to_string(), "corrupted stream");
+        assert_eq!(packet.get_bandwidth(), Ok(Bandwidth::Fullband));
+        assert_eq!(packet.get_samples_per_frame(), Ok(0));
+    }
+
+    #[test]
+    fn test_packet_bandwidths() {
+        // Just tests that all values can appear
+        let packet = OpusPacket::new(&[0x00]);
+        assert_eq!(packet.get_bandwidth(), Ok(Bandwidth::Narrowband));
+        let packet = OpusPacket::new(&[0x20]);
+        assert_eq!(packet.get_bandwidth(), Ok(Bandwidth::Mediumband));
+        let packet = OpusPacket::new(&[0xB0]);
+        assert_eq!(packet.get_bandwidth(), Ok(Bandwidth::Wideband));
+        let packet = OpusPacket::new(&[0xC0]);
+        assert_eq!(packet.get_bandwidth(), Ok(Bandwidth::Superwideband));
+        let packet = OpusPacket::new(&[0xF0]);
+        assert_eq!(packet.get_bandwidth(), Ok(Bandwidth::Fullband));
     }
 }
