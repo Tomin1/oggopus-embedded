@@ -192,6 +192,7 @@ impl Selections {
                     }
                 }
             }
+            class.write_packet(b"\r\n").await?;
             let mut command = buffer.as_ref().split(|c| *c == b' ');
             let mut task = match command.next() {
                 Some(b"benchmark") => Task::BenchmarkAndPlay,
@@ -199,13 +200,21 @@ impl Selections {
                 Some(b"help") => {
                     class.write_packet(b"Commands:\r\n").await?;
                     class
-                        .write_packet(
-                            b"benchmark [-s] [8khz|16khz|24khz|48khz] [8k|12k|16k|24k|32k|64k]\r\n",
-                        )
+                        .write_packet(b"benchmark [-s] [8khz|16khz|24khz|48khz]")
                         .await?;
+                    #[cfg(feature = "custom")]
                     class
-                        .write_packet(b"play [8khz|16khz|24khz|48khz] [8k|12k|16k|24k|32k|64k]\r\n")
+                        .write_packet(b" [8k|12k|16k|24k|32k|64k|custom]\r\n")
                         .await?;
+                    #[cfg(not(feature = "custom"))]
+                    class.write_packet(b" [8k|12k|16k|24k|32k|64k]\r\n").await?;
+                    class.write_packet(b"play [8khz|16khz|24khz|48khz]").await?;
+                    #[cfg(feature = "custom")]
+                    class
+                        .write_packet(b" [8k|12k|16k|24k|32k|64k|custom]\r\n")
+                        .await?;
+                    #[cfg(not(feature = "custom"))]
+                    class.write_packet(b" [8k|12k|16k|24k|32k|64k]\r\n").await?;
                     buffer.clear();
                     continue;
                 }
