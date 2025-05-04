@@ -8,17 +8,18 @@ import argparse
 import pandas as pd
 import io
 import serial
+from halo import Halo
 from pathlib import Path
 
 
-def Bitrate(s):
+def bitrate(s):
     s = s.lower()
     if s in ["8k", "12k", "16k", "24k", "32k", "48k", "64k", "custom"]:
         return s
     raise ValueError
 
 
-def Frequency(s):
+def freq(s):
     s = s.lower()
     if s in ["8khz", "12khz", "16khz", "24khz", "48khz"]:
         return s
@@ -43,6 +44,7 @@ def build_command(args):
     return command + b"\r\n"
 
 
+@Halo(text="Decoding", spinner="dots", placement="right")
 def get_output(command, serial_port, baudrate):
     with serial.Serial(serial_port, baudrate=baudrate, timeout=10) as s:
         s.reset_input_buffer()
@@ -54,10 +56,21 @@ def get_output(command, serial_port, baudrate):
         s.flush()
         content = s.read_until(b"\r\n")
         assert content == command
-        content = bytes()
-        while not content.endswith(b"> "):
-            content += s.read_until(b"> ")
-        return content
+
+        def get_until(sio, until=b"> "):
+            content = bytes()
+            while not content.endswith(b"> "):
+                content += s.read_until(b"> ")
+                if not content.endswith(b"\r\n"):
+                    *lines, last = content.split(b"\r\n")
+                else:
+                    last = bytes()
+                    lines = content.split(b"\r\n")
+                yield from map(lambda line: line.decode(), lines)
+                content = last
+
+        content = list(get_until(s))
+        return "\n".join(content)[:-2]
 
 
 def read_table(content):
@@ -78,7 +91,7 @@ def print_report(df):
     print(f"Maximum decode speed: {decode_speed.max() * 100 :.1f} %")
 
     # Skip first few packets as they are not representative
-    playback_speed = df["sample time"][3:] / df["playback time"][3:]
+    playback_speed = df["sample time"][3:-1] / df["playback time"][3:-1]
     print(f"Mean playback speed: {playback_speed.mean() * 100 :.1f} %")
     print(f"Variance of playback speed: {playback_speed.var() * 100:.3f} %pt.")
     print(f"Minimum playback speed: {playback_speed.min() * 100 :.1f} %")
@@ -113,7 +126,7 @@ def main():
     bitrate_group.add_argument(
         "-b",
         "--bitrate",
-        type=Bitrate,
+        type=bitrate,
         default=None,
         help="Select bitrate to decode, one of 8k, 12k, 16k, 24k, 32k, 48k and 64k, or 'custom'",
     )
@@ -127,7 +140,7 @@ def main():
     parser.add_argument(
         "-f",
         "--freq",
-        type=Frequency,
+        type=freq,
         default=None,
         help="Sampling rate for playback, one of 8khz, 12khz*, 16khz, 24khz* and 48khz",
     )
@@ -155,22 +168,22 @@ def main():
         if args.save_table is not None:
             args.save_table = open(args.save_table, "w")
         data = []
-        for bitrate in ["8k", "12k", "16k", "24k", "32k", "48k", "64k"]:
-            args.bitrate = bitrate
+        for bitrate_ in ["8k", "12k", "16k", "24k", "32k", "48k", "64k"]:
+            args.bitrate = bitrate_
             command = build_command(args)
             content = get_output(command, args.serial_port, args.baudrate)
-            df = read_table(content[:-2].decode().replace("\r\n", "\n"))
+            df = read_table(content)
             if args.print_table:
-                print(f"With {bitrate[:-1]} kb/s")
+                print(f"With {bitrate_[:-1]} kb/s")
                 print(df.to_string())
             if args.save_table is not None:
-                args.save_table.write(f"With {bitrate[:-1]} kb/s\n")
+                args.save_table.write(f"With {bitrate_[:-1]} kb/s\n")
                 df.to_csv(args.save_table)
                 args.save_table.write("\n\n")
             decode_speed = df["sample time"] / df["decode time"]
             data.append(
                 [
-                    bitrate,
+                    bitrate_,
                     (decode_speed >= 1).all(),
                     decode_speed.mean(),
                     decode_speed.var(),
@@ -193,11 +206,11 @@ def main():
     else:
         command = build_command(args)
         content = get_output(command, args.serial_port, args.baudrate)
-        if content.startswith(b"Invalid command"):
+        if content.startswith("Invalid command"):
             print(f"Cannot play '{args.bitrate}'")
             return
         if not args.play_only:
-            df = read_table(content[:-2].decode().replace("\r\n", "\n"))
+            df = read_table(content)
             if args.print_table:
                 print(df.to_string())
             if args.save_table is not None:
