@@ -513,7 +513,7 @@ async fn main(spawner: Spawner) {
                 // some other multiple of 2.5 ms instead (this is determined by the encoder).
                 dma_future.await;
                 mem::swap(&mut back_buffer, &mut front_buffer);
-                dma_future = i2s.write(&front_buffer[pre_skip..samples]);
+                dma_future = i2s.write(&front_buffer[pre_skip..pre_skip + samples]);
                 pre_skip = 0;
             }
 
