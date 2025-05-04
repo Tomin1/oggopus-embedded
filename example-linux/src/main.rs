@@ -30,9 +30,10 @@ fn main() -> Result<(), Box<dyn core::error::Error>> {
         ChannelMapping::Family0 { channels } => channels,
         _ => return Err("Unsupported channel mapping family".into()),
     };
+    let sample_rate = SamplingRate::closest(header.sample_rate.try_into().unwrap());
 
     hwp.set_channels(channels.into())?;
-    hwp.set_rate(header.sample_rate, ValueOr::Nearest)?;
+    hwp.set_rate(sample_rate as u32, ValueOr::Nearest)?;
     hwp.set_format(Format::s16())?;
     hwp.set_access(Access::RWInterleaved)?;
     pcm.hw_params(&hwp)?;
@@ -42,17 +43,18 @@ fn main() -> Result<(), Box<dyn core::error::Error>> {
     let swp = pcm.sw_params_current()?;
     swp.set_start_threshold(hwp.get_buffer_size()?)?;
     pcm.sw_params(&swp)?;
-    let sample_rate = hwp.get_rate()?;
     let channels = Channels::try_from(channels).unwrap();
 
-    println!("Playing in {:?} at rate of {}", channels, sample_rate);
+    println!(
+        "Playing in {:?} at rate of {}",
+        channels, sample_rate as i32
+    );
 
-    let sample_rate = SamplingRate::closest(sample_rate.try_into().unwrap());
     let mut decoder = Decoder::new(sample_rate, channels)?;
     let mut output = Vec::default();
     let mut total = 0;
 
-    if i32::from(sample_rate) != hwp.get_rate()?.try_into().unwrap() {
+    if sample_rate as u32 != hwp.get_rate()? {
         return Err("Could not set matching sampling rate".into());
     }
 
@@ -63,12 +65,10 @@ fn main() -> Result<(), Box<dyn core::error::Error>> {
             .inspect_err(|err| println!("Failed to read packets: {err:?}"))?;
 
         while let Some(packet) = packets.next() {
-            output.resize(
-                decoder.get_nb_samples(packet.data)? * usize::from(u8::from(channels)),
-                0i16,
-            );
+            let multiplier = usize::from(u8::from(channels));
+            output.resize(decoder.get_nb_samples(packet.data)? * multiplier, 0i16);
             let samples = decoder.decode(packet.data, output.as_mut_slice())?;
-            io.writei(&output[..samples])?;
+            io.writei(&output[..samples * multiplier])?;
             sum += samples;
         }
         println!("Decoded {sum} samples");
