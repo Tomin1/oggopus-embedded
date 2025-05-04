@@ -470,7 +470,7 @@ async fn main(spawner: Spawner) {
                         let _ = class.write_packet(b"Decoding failed\r\n").await;
                         break 'inner;
                     }
-                    Ok(samples) => samples,
+                    Ok(output) => output.len() / 2, // Two channels => samples per frame
                 };
                 let end_of_decode = Instant::now();
                 if selections.benchmark() {

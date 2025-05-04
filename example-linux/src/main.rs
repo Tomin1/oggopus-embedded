@@ -67,9 +67,9 @@ fn main() -> Result<(), Box<dyn core::error::Error>> {
         while let Some(packet) = packets.next() {
             let multiplier = usize::from(u8::from(channels));
             output.resize(decoder.get_nb_samples(packet.data)? * multiplier, 0i16);
-            let samples = decoder.decode(packet.data, output.as_mut_slice())?;
-            io.writei(&output[..samples * multiplier])?;
-            sum += samples;
+            let output = decoder.decode(packet.data, output.as_mut_slice())?;
+            io.writei(output)?;
+            sum += output.len() / channels as usize;
         }
         println!("Decoded {sum} samples");
         total += sum;

@@ -218,8 +218,8 @@ impl Decoder {
     /**
      * Decode opus packet from data into output buffer.
      *
-     * Returns decoded frame size, i.e. the number of decoded samples per channel in the output
-     * buffer.
+     * Returns decoded frame stored on output buffer. Its length is frame size, i.e. the number of
+     * decoded samples per channel.
      *
      * ```
      * # use opus_embedded::{Decoder, SamplingRate, Channels};
@@ -229,11 +229,15 @@ impl Decoder {
      * let mut output = Vec::new();
      * // If you use stereo audio, multiply the number of samples by two for output size.
      * output.resize(decoder.get_nb_samples(data).unwrap(), 0);
-     * let samples = decoder.decode(data, &mut output).unwrap();
-     * println!("Got {} samples of data in output", samples);
+     * let output = decoder.decode(data, &mut output).unwrap();
+     * println!("Got {} samples of data in output", output.len());
      * ```
      */
-    pub fn decode(&mut self, data: &[u8], output: &mut [i16]) -> Result<usize, DecoderError> {
+    pub fn decode<'output>(
+        &mut self,
+        data: &[u8],
+        output: &'output mut [i16],
+    ) -> Result<&'output [i16], DecoderError> {
         // SAFETY: The pointers point to valid slices of data or null if their respective slice was
         // empty. Lengths are derived from the respective slices
         let samples = unsafe {
@@ -261,7 +265,11 @@ impl Decoder {
                 error_code: samples,
             })
         } else {
-            Ok(samples.saturating_as())
+            let frame_size = match self.channels {
+                Channels::Mono => samples as usize,
+                Channels::Stereo => samples as usize * 2,
+            };
+            Ok(&output[..frame_size])
         }
     }
 }
@@ -449,7 +457,7 @@ mod tests {
         // Passing empty slice (-> null) is a valid input for decoding
         let mut output = [0i16; 100];
         let result = decoder.decode(&DATA, &mut output);
-        assert_eq!(result, Ok(output.len()));
+        assert_eq!(result.unwrap().len(), output.len());
         for v in output {
             assert_eq!(v, 0);
         }
@@ -474,7 +482,7 @@ mod tests {
         let mut decoder = Decoder::new(SamplingRate::F8k, Channels::Mono).unwrap();
         assert_eq!(decoder.get_nb_samples(&DATA), Ok(80));
         let mut output = [0i16; 80];
-        assert_eq!(decoder.decode(&DATA, &mut output), Ok(80));
+        assert_eq!(decoder.decode(&DATA, &mut output).unwrap().len(), 80);
     }
 
     #[test]
