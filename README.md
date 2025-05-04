@@ -16,33 +16,17 @@ See the various COPYING files for license information.
 
 Ogg and opus header parsing
 ---------------------------
-See oggopus-embeddbed directory for Ogg parsing implementation. It can parse
-Ogg files as specified by RFC3533 and RFC7845 but only if they contain only
-Opus headers and data.
+See oggopus-embedded directory for Ogg parsing implementation. It can parse Ogg
+files as specified by RFC3533 and RFC7845 but only if they contain only Opus
+headers and data.
 
 If you need a more complete Ogg parser, you should look elsewhere. There are
 lots of other implementations.
-
-### Missing features
-The parser is missing a few features you might expect although it already has
-more than what I actually needed myself.
-
-- CRC checks.
-- Downmixing coefficients for Family 1 Channel Mapping down to stereo audio.
-- Parsing of Opus comments header.
-- Seeking.
-- Streaming data (e.g. from filesystem or network).
 
 Opus decoder
 ------------
 See opus-embedded directory for libopus bindings for decoding Opus. The build
 links libopus statically and is no-std on targets without std library.
-
-The build for ARM has flags set for Cortex-M0+. Other microcontrollers could be
-supported better with some work.
-
-Note that the code might not work on some platforms if OpusDecoder size differs.
-Please file issue tickets when you see size mismatches.
 
 Example player
 --------------
@@ -52,6 +36,6 @@ to a fault but it can demonstrate that the libraries work.
 rp2040 example
 --------------
 There is a small example for rp2040 microcontroller found in Raspberry Pico. It
-uses I2S to play a mono audio sample. You must build it inside the directory,
+uses I2S to play (mono) audio samples. You must build it inside the directory,
 not in the workspace directory, otherwise cargo will not see the required
 configuration.
