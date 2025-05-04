@@ -120,6 +120,7 @@ impl Channels {
 #[derive(Debug)]
 pub struct Decoder {
     decoder: OpusDecoder,
+    channels: Channels,
 }
 
 /**
@@ -167,10 +168,11 @@ impl Decoder {
             let error_code = OPUS_ALLOC_FAIL;
             return Err(DecoderError { error_code });
         }
-        let channels = channels.channels().into();
         let mut decoder = Decoder {
             decoder: OpusDecoder::default(),
+            channels,
         };
+        let channels = channels.channels().into();
         // SAFETY: The number of channels can be only one or two as required
         let size = unsafe { opus_decoder_get_size(channels) };
         assert!(
@@ -216,7 +218,8 @@ impl Decoder {
     /**
      * Decode opus packet from data into output buffer.
      *
-     * Returns the number of decoded samples in the output buffer.
+     * Returns decoded frame size, i.e. the number of decoded samples per channel in the output
+     * buffer.
      *
      * ```
      * # use opus_embedded::{Decoder, SamplingRate, Channels};
@@ -240,13 +243,18 @@ impl Decoder {
             } else {
                 core::ptr::null()
             };
-            let output_len: i32 = output.len().saturating_as();
+            // Let's calculate frame_size that will fit in the output buffer
+            let frame_size: i32 = match self.channels {
+                Channels::Mono => output.len(),
+                Channels::Stereo => output.len() / 2,
+            }
+            .saturating_as();
             let output = if !output.is_empty() {
                 output.as_mut_ptr()
             } else {
                 core::ptr::null_mut()
             };
-            opus_decode(&mut self.decoder, data, len, output, output_len, 0)
+            opus_decode(&mut self.decoder, data, len, output, frame_size, 0)
         };
         if samples < 0 {
             Err(DecoderError {
