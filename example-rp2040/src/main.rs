@@ -32,7 +32,7 @@ use embassy_rp::peripherals::{DMA_CH0, PIN_17, PIN_18, PIN_19, PIO0, USB};
 use embassy_rp::pio::{InterruptHandler as PioInterruptHandler, Pio};
 use embassy_rp::pio_programs::i2s::{PioI2sOut, PioI2sOutProgram};
 use embassy_rp::usb::{Driver, InterruptHandler as UsbInterruptHandler};
-use embassy_time::{Duration as EmbassyDuration, Instant};
+use embassy_time::{Duration as EmbassyDuration, Instant, Timer};
 use embassy_usb::UsbDevice;
 use embassy_usb::class::cdc_acm::{CdcAcmClass, State};
 use embassy_usb::driver::EndpointError;
@@ -384,6 +384,14 @@ async fn main(spawner: Spawner) {
 
         // Setup pio state machine for i2s output
         info!("Initializing pio");
+
+        // Set SD pin to high for playback
+        if selections.play() {
+            sd.set_high();
+        } else {
+            sd.set_low();
+        }
+
         let Pio {
             mut common, sm0, ..
         } = Pio::new(unsafe { PIO0::steal() }, PioIrqs);
@@ -439,13 +447,6 @@ async fn main(spawner: Spawner) {
         // Trigger transfer of empty front buffer data to the PIO FIFO
         // but don't await the returned future, yet
         let mut dma_future = i2s.write(&front_buffer[0..samples]);
-
-        // Set SD pin to high for playback
-        if selections.play() {
-            sd.set_high();
-        } else {
-            sd.set_low();
-        }
 
         info!("Decoding the sample");
         if selections.benchmark() && print_header(&mut class).await.is_err() {
@@ -537,7 +538,15 @@ async fn main(spawner: Spawner) {
             }
         }
 
+        // Prepare buffer of silence
+        back_buffer.fill(0);
+        // Schedule and play it
         dma_future.await;
+        i2s.write(back_buffer).await;
+        // Wait until all has been played
+        Timer::after_millis(1).await;
+        // TODO: Check that this drives the other pins low too
+        // Turn off the amplifier
         sd.set_low();
     }
 }
