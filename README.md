@@ -25,8 +25,8 @@ lots of other implementations.
 
 Opus decoder
 ------------
-See opus-embedded directory for libopus bindings for decoding Opus. The build
-links libopus statically and is no-std on targets without std library.
+See opus-embedded directory for libopus abstractions for decoding Opus. The
+build links libopus statically and is no-std on targets without std library.
 
 Example player
 --------------
@@ -36,6 +36,6 @@ to a fault but it can demonstrate that the libraries work.
 rp2040 example
 --------------
 There is a small example for rp2040 microcontroller found in Raspberry Pico. It
-uses I2S to play (mono) audio samples. You must build it inside the directory,
-not in the workspace directory, otherwise cargo will not see the required
-configuration.
+uses I2S to play (mono) audio samples and also serves as a benchmark for Opus
+decoding. You must build it inside the directory, not in the workspace
+directory, otherwise cargo will not see the required configuration.
