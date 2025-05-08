@@ -367,8 +367,8 @@ async fn main(spawner: Spawner) {
 
     // Create two audio buffers (back and front) which will take turns being
     // filled with new audio data and being sent to the PIO FIFO using dma.
-    // This can fit one 20 ms sample at 48 000 Hz.
-    const BUFFER_SIZE: usize = 960;
+    // This can fit one 20 ms sample at 48 000 Hz plus quite a bit of padding.
+    const BUFFER_SIZE: usize = 1_536;
     static DMA_BUFFER: StaticCell<[u32; BUFFER_SIZE * 2]> = StaticCell::new();
     let dma_buffer = DMA_BUFFER.init_with(|| [0u32; BUFFER_SIZE * 2]);
 
