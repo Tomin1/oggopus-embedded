@@ -40,6 +40,20 @@ Connect the pins of MAX38357A in the following way to Raspberry Pico:
 
 Also connect a speaker to the output.
 
+Sampling rate
+-------------
+By default this uses 16,000 Hz sampling rate for playback. As Opus supports
+only certain sampling rates and MAX38357A does not support some ranges of
+sampling rates, the usable sampling rates are 8,000 Hz, 16,000 Hz and 48,000
+Hz. 12,000 Hz and 24,000 Hz sampling rates that Opus supports are also possible
+choices but MAX38357A will misbehave with them. Those may be usable with other
+DAC chips though.
+
+Depending on your wiring 48,000 Hz sampling rate may work or it may fail giving
+loud high pitching noise from the speaker. Thus it is not the default sampling
+rate. However, it can be set as the default by enabling `default-to-48khz`
+feature.
+
 Custom sample
 -------------
 Enable `custom` feature to include a custom sample in the binary. Place the

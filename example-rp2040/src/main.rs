@@ -230,8 +230,8 @@ impl Selections {
                 task = Task::Benchmark;
                 arg = command.next();
             }
-            let sampling_rate = if let Some(freq) = arg {
-                if freq.ends_with(b"khz") {
+            let sampling_rate = match arg {
+                Some(freq) if freq.ends_with(b"khz") => {
                     let sampling_rate = match freq {
                         b"8khz" => SamplingRate::F8k,
                         b"16khz" => SamplingRate::F16k,
@@ -245,11 +245,14 @@ impl Selections {
                     };
                     arg = command.next();
                     sampling_rate
-                } else {
-                    SamplingRate::F16k
                 }
-            } else {
-                SamplingRate::F16k
+                _ => {
+                    if cfg!(feature = "default-to-48khz") {
+                        SamplingRate::F48k
+                    } else {
+                        SamplingRate::F16k
+                    }
+                }
             };
             let bitstream_type = match arg {
                 Some(b"8k") | None => BitstreamType::Bs8k,
