@@ -190,9 +190,23 @@ impl Decoder {
     }
 
     /**
+     * Return the number of samples in the opus data multiplied by the number of channels.
+     *
+     * This value can be used for output buffer size for decoding when total number of samples in
+     * frame is expected.
+     */
+    pub fn get_nb_samples_total(&self, data: &[u8]) -> Result<usize, DecoderError> {
+        match self.channels {
+            Channels::Mono => self.get_nb_samples(data),
+            Channels::Stereo => Ok(self.get_nb_samples(data)? * 2),
+        }
+    }
+
+    /**
      * Return the number of samples in the opus data.
      *
-     * This value can be used for allocating an output buffer for decoding.
+     * This value can be used for audio output when frame size is expected, i.e. the number of
+     * samples per channel.
      */
     pub fn get_nb_samples(&self, data: &[u8]) -> Result<usize, DecoderError> {
         // SAFETY: The pointer points to a valid slice of data or null if the slice was empty.
@@ -218,8 +232,8 @@ impl Decoder {
     /**
      * Decode opus packet from data into output buffer.
      *
-     * Returns decoded frame stored on output buffer. Its length is frame size, i.e. the number of
-     * decoded samples per channel.
+     * Returns decoded frame stored on output buffer. Its length is total number of samples in a
+     * frame.
      *
      * ```
      * # use opus_embedded::{Decoder, SamplingRate, Channels};
@@ -227,8 +241,7 @@ impl Decoder {
      * # let data = data.as_slice();
      * let mut decoder = Decoder::new(SamplingRate::F24k, Channels::Mono).unwrap();
      * let mut output = Vec::new();
-     * // If you use stereo audio, multiply the number of samples by two for output size.
-     * output.resize(decoder.get_nb_samples(data).unwrap(), 0);
+     * output.resize(decoder.get_nb_samples_total(data).unwrap(), 0);
      * let output = decoder.decode(data, &mut output).unwrap();
      * println!("Got {} samples of data in output", output.len());
      * ```
