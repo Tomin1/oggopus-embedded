@@ -1,7 +1,8 @@
 Opus decoder
 ============
-This is safe abstractions over libpus for decoding Opus audio. The build links
-libopus statically and is no-std on targets without std library.
+This is safe abstractions over [libopus](https://github.com/xiph/opus) for
+decoding Opus audio. The build links libopus statically and is no-std on
+targets without std library.
 
 The build for ARM has flags set for Cortex-M0+. Other microcontrollers could be
 supported better with some work.
