@@ -23,7 +23,7 @@ yourself.
 Family 255 and Reserved Channel Mapping support
 -----------------------------------------------
 Family 255 and Reserved channel mapping table parsing support can be enabled
-with `family255` feature. It is usually not needeed for decoding mono or stereo
+with `family255` feature. It is usually not needed for decoding mono or stereo
 audio and it makes OpusHeader struct to take more space so it's not enabled by
 default.
 
@@ -43,5 +43,5 @@ something.
 
 License
 -------
-This crate is BSD licensed. See COPYING for more infomation. Dependency crates
+This crate is BSD licensed. See COPYING for more information. Dependency crates
 have their own licenses.

@@ -24,4 +24,4 @@ own respective features that enable these features case by case.
 License
 -------
 This crate is BSD licensed just like libopus. See COPYING and COPYING.libopus
-for more infomation. Dependency crates have their own licenses.
+for more information. Dependency crates have their own licenses.

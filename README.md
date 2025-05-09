@@ -1,5 +1,5 @@
-Oggopus embdedded
-=================
+Oggopus embedded
+================
 This is parser for Ogg files containing Opus audio with strong focus on
 embedded systems, and also bindings for libopus Opus decoder. Those can be used
 independently, and they are both no-std and no-alloc compatible.

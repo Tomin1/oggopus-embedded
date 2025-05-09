@@ -116,5 +116,5 @@ you intend to develop.
 License
 -------
 This example is MIT licensed. The license is inherited from the embassy
-examples that this builds on. See COPYING for more infomation. Dependency
+examples that this builds on. See COPYING for more information. Dependency
 crates have their own licenses.

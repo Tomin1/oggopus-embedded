@@ -28,5 +28,5 @@ decoding streams that may contain more than one channel of audio (per stream).
 
 License
 -------
-This crate is BSD licensed. See COPYING for more infomation. Dependency crates
+This crate is BSD licensed. See COPYING for more information. Dependency crates
 have their own licenses.
