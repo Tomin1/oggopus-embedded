@@ -16,6 +16,21 @@ use core::ffi::{c_int, CStr};
 use num_enum::{IntoPrimitive, TryFromPrimitive};
 use opus_embedded_sys::*;
 
+pub mod prelude {
+    /*!
+     * opus_embedded prelude.
+     *
+     * Includes the most commonly needed types.
+     *
+     * ```
+     * # #![allow(unused_imports)]
+     * use opus_embedded::prelude::*;
+     * ```
+     */
+
+    pub use super::{Channels, Decoder, SamplingRate};
+}
+
 /**
  * # Safety
  *

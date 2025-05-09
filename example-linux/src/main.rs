@@ -9,8 +9,8 @@ use alsa::{
     pcm::{Access, Format, HwParams},
     Direction, ValueOr, PCM,
 };
-use oggopus_embedded::{opus::ChannelMapping, states, Bitstream};
-use opus_embedded::{Channels, Decoder, SamplingRate};
+use oggopus_embedded::prelude::*;
+use opus_embedded::prelude::*;
 
 fn main() -> Result<(), Box<dyn core::error::Error>> {
     let pcm = PCM::new("default", Direction::Playback, false)?;
@@ -23,7 +23,7 @@ fn main() -> Result<(), Box<dyn core::error::Error>> {
         .reader()
         .read_header()
         .inspect_err(|err| println!("Failed to read header or comments packet: {err:?}"))?;
-    let states::Either::Continued(mut reader) = reader else {
+    let Either::Continued(mut reader) = reader else {
         return Err("Stream ended after header or comments packet".into());
     };
     let channels = match header.channels {
@@ -73,9 +73,9 @@ fn main() -> Result<(), Box<dyn core::error::Error>> {
         println!("Decoded {sum} samples");
         total += sum;
         match new_reader {
-            states::Either::Ended(next_reader) => {
+            Either::Ended(next_reader) => {
                 if let Some(next_reader) = next_reader.next_reader() {
-                    let (states::Either::Continued(next_reader), header) =
+                    let (Either::Continued(next_reader), header) =
                         next_reader.read_header().inspect_err(|err| {
                             println!("Failed to read header or comments packet: {err:?}")
                         })?
@@ -95,7 +95,7 @@ fn main() -> Result<(), Box<dyn core::error::Error>> {
                     break;
                 }
             }
-            states::Either::Continued(new_reader) => {
+            Either::Continued(new_reader) => {
                 reader = new_reader;
             }
         }

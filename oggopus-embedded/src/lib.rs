@@ -29,6 +29,23 @@ mod container;
 pub mod opus;
 
 pub use container::{OggError, Packet, Packets};
+pub use opus::ChannelMapping;
+pub use states::Either;
+
+pub mod prelude {
+    /*!
+     * oggopus_embedded prelude.
+     *
+     * Includes the most commonly needed types.
+     *
+     * ```
+     * # #![allow(unused_imports)]
+     * use oggopus_embedded::prelude::*;
+     * ```
+     */
+
+    pub use super::{Bitstream, ChannelMapping, Either};
+}
 
 /// Error values for formatting.
 #[derive(Debug, PartialEq)]
@@ -206,7 +223,7 @@ pub mod states {
     }
 }
 
-use states::{Beginning, Either, EndOfStream, InStream, ReaderState};
+use states::{Beginning, EndOfStream, InStream, ReaderState};
 
 /// Header with reader for the stream or stream ended.
 pub type EitherHeaderOrEnded<'bs, 'data> = (
