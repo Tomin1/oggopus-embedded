@@ -2,7 +2,7 @@
 name = "example-rp2040"
 repository = "https://github.com/Tomin1/oggopus-embedded"
 description = "Example for Rasbperry Pico to demonstrate oggopus-embedded"
-version = "0.1.0"
+version = "0.1.1"
 license = "MIT"
 edition = "2024"
 publish = false
@@ -20,8 +20,8 @@ embassy-rp = { version = "0.4.0", features = ["critical-section-impl", "defmt", 
 embassy-time = "0.4.0"
 embassy-usb = { version = "0.4.0", features = ["defmt", "max-handler-count-1", "max-interface-count-2"], default-features = false }
 numtoa = "0.2.4"
-oggopus-embedded = { path = "../oggopus-embedded", version = "0.1.0" }
-opus-embedded = { path = "../opus-embedded", version = "0.1.0", features = ["stereo"] }
+oggopus-embedded = { path = "../oggopus-embedded", version = "0.1.1" }
+opus-embedded = { path = "../opus-embedded", version = "0.1.1", features = ["stereo"] }
 panic-probe = { version = "1.0.0", features = ["print-defmt"] }
 portable-atomic = { version = "1.11.0", features = ["critical-section"] }
 static_cell = "2.1.0"

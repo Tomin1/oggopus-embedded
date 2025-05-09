@@ -2,15 +2,15 @@
 name = "example-linux"
 repository = "https://github.com/Tomin1/oggopus-embedded"
 description = "Example for Linux to demonstrate oggopus-embedded"
-version = "0.1.0"
+version = "0.1.1"
 license = "BSD-3-Clause"
 edition = "2021"
 publish = false
 
 [dependencies]
 alsa = "0.9.1"
-oggopus-embedded = { path = "../oggopus-embedded", version = "0.1.0" }
-opus-embedded = { path = "../opus-embedded", version = "0.1.0", features = ["stereo"] }
+oggopus-embedded = { path = "../oggopus-embedded", version = "0.1.1" }
+opus-embedded = { path = "../opus-embedded", version = "0.1.1", features = ["stereo"] }
 
 [package.metadata.docs.rs]
 all-features = true

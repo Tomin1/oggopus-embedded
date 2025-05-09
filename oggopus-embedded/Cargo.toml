@@ -4,7 +4,7 @@ repository = "https://github.com/Tomin1/oggopus-embedded"
 description = "Parsing of oggopus files on embedded device flash"
 keywords = ["ogg", "opus", "no_std", "parsing", "audio"]
 category = ["embedded", "multimedia::audio", "no-std::no-alloc"]
-version = "0.1.0"
+version = "0.1.1"
 license = "BSD-3-Clause"
 edition = "2021"
 
