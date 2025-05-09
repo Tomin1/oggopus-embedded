@@ -162,7 +162,11 @@ impl SamplingRate {
 }
 
 impl Decoder {
-    /// Construct decoder from requested sampling rate and number of channels.
+    /**
+     * Construct decoder from requested sampling rate and number of channels.
+     *
+     * See also [`opus_decoder_get_size`] and [`opus_decoder_init`].
+     */
     pub fn new(freq: SamplingRate, channels: Channels) -> Result<Self, DecoderError> {
         if !cfg!(feature = "stereo") && channels == Channels::Stereo {
             let error_code = OPUS_ALLOC_FAIL;
@@ -194,6 +198,8 @@ impl Decoder {
      *
      * This value can be used for output buffer size for decoding when total number of samples in
      * frame is expected.
+     *
+     * See also [`Decoder::get_nb_samples`].
      */
     pub fn get_nb_samples_total(&self, data: &[u8]) -> Result<usize, DecoderError> {
         match self.channels {
@@ -207,6 +213,8 @@ impl Decoder {
      *
      * This value can be used for audio output when frame size is expected, i.e. the number of
      * samples per channel.
+     *
+     * See also [`opus_decoder_get_nb_samples`].
      */
     pub fn get_nb_samples(&self, data: &[u8]) -> Result<usize, DecoderError> {
         // SAFETY: The pointer points to a valid slice of data or null if the slice was empty.
@@ -245,6 +253,8 @@ impl Decoder {
      * let output = decoder.decode(data, &mut output).unwrap();
      * println!("Got {} samples of data in output", output.len());
      * ```
+     *
+     * See also [`opus_decode`].
      */
     pub fn decode<'output>(
         &mut self,
@@ -314,6 +324,8 @@ impl<'data> OpusPacket<'data> {
      *
      * Does not check for validity.
      *
+     * See also [`opus_packet_get_nb_channels`].
+     *
      * # Panics
      * Panics if data is an empty slice.
      */
@@ -337,7 +349,11 @@ impl<'data> OpusPacket<'data> {
         }
     }
 
-    /// Return the number of frames for the packet.
+    /**
+     * Return the number of frames for the packet.
+     *
+     * See also [`opus_packet_get_nb_frames`].
+     */
     pub fn get_nb_frames(&self) -> Result<u32, InvalidPacket> {
         // SAFETY: The pointer points to a valid slice of data, the length is derived from the
         // slice and the slice is not empty
@@ -354,7 +370,11 @@ impl<'data> OpusPacket<'data> {
         }
     }
 
-    /// Return the bandwidth of the packet.
+    /**
+     * Return the bandwidth of the packet.
+     *
+     * See also [`opus_packet_get_bandwidth`].
+     */
     pub fn get_bandwidth(&self) -> Result<Bandwidth, InvalidPacket> {
         // SAFETY: The pointer points to a valid slice of data, and the size is not zero
         let bandwidth = unsafe {
@@ -379,7 +399,11 @@ impl<'data> OpusPacket<'data> {
         }
     }
 
-    /// Return the number of sampels per frame in the packet.
+    /**
+     * Return the number of sampels per frame in the packet.
+     *
+     * See also [`opus_packet_get_samples_per_frame`].
+     */
     pub fn get_samples_per_frame(&self) -> Result<u32, InvalidPacket> {
         // SAFETY: The pointer points to a valid slice of data, the length is derived from the
         // slice and the slice is not empty
