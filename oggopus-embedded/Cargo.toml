@@ -1,8 +1,12 @@
 [package]
 name = "oggopus-embedded"
+repository = "https://github.com/Tomin1/oggopus-embedded"
+description = "Parsing of oggopus files on embedded device flash"
+keywords = ["ogg", "opus", "no_std", "parsing", "audio"]
+category = ["embedded", "multimedia::audio", "no-std::no-alloc"]
 version = "0.1.0"
-edition = "2021"
 license = "BSD-3-Clause"
+edition = "2021"
 
 [features]
 family255 = []
@@ -10,3 +14,8 @@ family255 = []
 [dependencies]
 bitflags = "2.8"
 nom = { version = "8", default-features = false }
+
+[package.metadata.docs.rs]
+all-features = true
+default-target = "thumbv6m-none-eabi"
+targets = ["thumbv6m-none-eabi", "x86_64-unknown-linux-gnu"]
