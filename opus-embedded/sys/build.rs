@@ -5,8 +5,54 @@
  * Builds minimal libopus for decoding with fixed point decoder and no dred.
  */
 
+use bindgen::callbacks::ParseCallbacks;
 use std::env;
 use std::path::PathBuf;
+
+#[derive(Debug)]
+struct ParseCallback {
+    cargo_callbacks: bindgen::CargoCallbacks,
+}
+
+impl ParseCallback {
+    fn new() -> Self {
+        ParseCallback {
+            cargo_callbacks: bindgen::CargoCallbacks::new(),
+        }
+    }
+}
+
+impl ParseCallbacks for ParseCallback {
+    fn process_comment(&self, comment: &str) -> Option<String> {
+        doxygen_bindgen::transform(comment)
+            .map(|comment| {
+                comment
+                    .replace("[in] ", "_\\[in\\]_")
+                    .replace("[out] ", "_\\[out\\]_")
+                    .replace("[`opus_errorcodes`]", "opus error codes")
+                    .replace(
+                        "[`opus_decoder_create,opus_decoder_get_size`]",
+                        "[`opus_decoder_create`], [`opus_decoder_get_size`]",
+                    )
+            })
+            .inspect_err(|err| {
+                println!("cargo:warning=Could not transform doxygen comment: {comment}\n{err}");
+            })
+            .ok()
+    }
+
+    fn header_file(&self, filename: &str) {
+        self.cargo_callbacks.header_file(filename)
+    }
+
+    fn include_file(&self, filename: &str) {
+        self.cargo_callbacks.include_file(filename)
+    }
+
+    fn read_env_var(&self, key: &str) {
+        self.cargo_callbacks.read_env_var(key)
+    }
+}
 
 fn main() {
     let src_path = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap()).join("src");
@@ -66,7 +112,6 @@ fn main() {
         .allowlist_var("OPUS_ALLOC_FAIL")
         .allowlist_var("OPUS_BANDWIDTH_.*")
         .default_visibility(bindgen::FieldVisibilityKind::Private)
-        .generate_comments(false)
         .use_core()
         .clang_arg("-DDISABLE_DEBUG_FLOAT=1")
         .clang_arg("-DDISABLE_FLOAT_API=1")
@@ -77,7 +122,7 @@ fn main() {
         .clang_arg("-Isrc/opus/include")
         .clang_arg("-Isrc/opus/silk")
         .derive_default(true)
-        .parse_callbacks(Box::new(bindgen::CargoCallbacks::new()));
+        .parse_callbacks(Box::new(ParseCallback::new()));
     if env::var("CARGO_CFG_TARGET_OS").unwrap() != "none" {
         builder = builder
             .allowlist_function("opus_decoder_create")

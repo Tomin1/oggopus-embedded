@@ -6,6 +6,11 @@
  * Minimal bindings for opus decoder.
  *
  * Focused on no_alloc use on embedded ARM platforms.
+ *
+ * The documentation is badly formatted in places and you might want to look at [Opus documentation
+ * instead](https://www.opus-codec.org/docs/html_api/index.html) instead. In particular, the page
+ * about [Opus Decoder](https://www.opus-codec.org/docs/html_api/group__opusdecoder.html) may be
+ * handy.
  */
 
 #![allow(non_camel_case_types)]

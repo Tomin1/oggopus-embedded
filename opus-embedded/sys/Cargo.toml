@@ -14,3 +14,4 @@ stereo = []
 [build-dependencies]
 autotools = "0.2"
 bindgen = "0.71.0"
+doxygen-bindgen = "0.1.3"
