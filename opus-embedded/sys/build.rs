@@ -7,7 +7,10 @@
 
 use bindgen::callbacks::ParseCallbacks;
 use std::env;
+use std::ffi::OsString;
+use std::fs::create_dir_all;
 use std::path::PathBuf;
+use std::process::Command;
 
 #[derive(Debug)]
 struct ParseCallback {
@@ -55,8 +58,22 @@ impl ParseCallbacks for ParseCallback {
 }
 
 fn main() {
-    let src_path = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap()).join("src");
-    let mut builder = autotools::Config::new("src/opus");
+    // Make a copy of libopus to OUT_DIR so we can run autoreconf without modifying sources
+    let target = PathBuf::from(env::var("OUT_DIR").unwrap()).join("opus");
+    create_dir_all(&target).unwrap();
+    let inputs: Vec<_> = std::fs::read_dir("src/opus")
+        .unwrap()
+        .map(Result::unwrap)
+        .filter(|entry| entry.file_name().as_encoded_bytes()[0] != b'.')
+        .map(|entry| entry.path().as_os_str().to_owned())
+        .collect();
+    let mut args = vec![OsString::from("-r"), OsString::from("--")];
+    args.extend(inputs);
+    args.push(OsString::from(&target));
+    Command::new("cp").args(&args).status().unwrap();
+
+    // Run autoreconf and configure in the new directory
+    let mut builder = autotools::Config::new(target);
     builder
         .reconf("-ivf")
         .disable("deep-plc", None)
@@ -76,6 +93,7 @@ fn main() {
         builder.disable("rtcd", None);
     }
     if env::var("CARGO_CFG_TARGET_OS").unwrap() == "none" {
+        let src_path = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap()).join("src");
         builder
             .cflag("-D_FORTIFY_SOURCE=0")
             .cflag("-DOVERRIDE_celt_fatal")
