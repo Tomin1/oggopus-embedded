@@ -6,6 +6,7 @@
  */
 
 use bindgen::callbacks::ParseCallbacks;
+use regex::Regex;
 use std::env;
 use std::ffi::OsString;
 use std::fs::create_dir_all;
@@ -15,12 +16,29 @@ use std::process::Command;
 #[derive(Debug)]
 struct ParseCallback {
     cargo_callbacks: bindgen::CargoCallbacks,
+    replacements: Vec<(Regex, &'static str)>,
 }
 
 impl ParseCallback {
     fn new() -> Self {
         ParseCallback {
             cargo_callbacks: bindgen::CargoCallbacks::new(),
+            replacements: vec![
+                (
+                    Regex::new(r"\[(?<text>(in|out))\] ").unwrap(),
+                    r"_\[$text\]_",
+                ),
+                (
+                    Regex::new(r"\n(?<text>\* `error`[^\n]+)\n(?<after>[^\*]*$)").unwrap(),
+                    "\n$text\n\n$after",
+                ),
+                (Regex::new(r"#(?<text>[A-Z_]+)").unwrap(), r"[`$text`]"),
+                (
+                    Regex::new(r"@retval #?(?<val>[A-Z_]+) (?<text>.*)").unwrap(),
+                    "\n\n* [`$val`] $text",
+                ),
+                (Regex::new(r"@retval (?<text>.*)").unwrap(), "\n\n* $text"),
+            ],
         }
     }
 }
@@ -29,14 +47,25 @@ impl ParseCallbacks for ParseCallback {
     fn process_comment(&self, comment: &str) -> Option<String> {
         doxygen_bindgen::transform(comment)
             .map(|comment| {
-                comment
-                    .replace("[in] ", "_\\[in\\]_")
-                    .replace("[out] ", "_\\[out\\]_")
+                let mut comment = comment
                     .replace("[`opus_errorcodes`]", "opus error codes")
+                    .replace("#OPUS_RESET_STATE", "`OPUS_RESET_STATE`")
                     .replace(
-                        "[`opus_decoder_create,opus_decoder_get_size`]",
-                        "[`opus_decoder_create`], [`opus_decoder_get_size`]",
+                        "@retval #OPUS_OK",
+                        "\n\n\n# Returns\n\n@retval #OPUS_OK",
                     )
+                    .replace(
+                        "@retval OPUS_BANDWIDTH_NARROW",
+                        "\n\n# Returns\n\n@retval OPUS_BANDWIDTH_NARROW",
+                    )
+                    .replace(
+                        " # See also\n\n> [`opus_decoder_create,opus_decoder_get_size`]",
+                        "\nSee also [`opus_decoder_create`] and [`opus_decoder_get_size`].",
+                    );
+                for (regex, replacement) in &self.replacements {
+                    comment = regex.replace_all(&comment, *replacement).to_string();
+                }
+                comment
             })
             .inspect_err(|err| {
                 println!("cargo:warning=Could not transform doxygen comment: {comment}\n{err}");

@@ -19,6 +19,7 @@ stereo = []
 autotools = "0.2"
 bindgen = "0.71.0"
 doxygen-bindgen = "0.1.3"
+regex = "1.11.1"
 
 [package.metadata.docs.rs]
 all-features = true
