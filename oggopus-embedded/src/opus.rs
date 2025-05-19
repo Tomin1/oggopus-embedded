@@ -132,13 +132,12 @@ pub enum ChannelMapping {
         /// Channel mapping table.
         table: ChannelMappingTable<8>,
     },
+    #[cfg_attr(docsrs, doc(cfg(feature = "family255")))]
     #[cfg(feature = "family255")]
     /**
      * Family 255 channel mapping.
      *
      * Channels are unidentified.
-     *
-     * Only available if family255 feature has been enabled.
      */
     Family255 {
         /// The number of channels.
@@ -146,13 +145,12 @@ pub enum ChannelMapping {
         /// Channel mapping table.
         table: ChannelMappingTable<255>,
     },
+    #[cfg_attr(docsrs, doc(cfg(feature = "family255")))]
     #[cfg(feature = "family255")]
     /**
      * Reserved channel mapping value was used in the stream.
      *
      * Such mapping may be a future extension to the container format.
-     *
-     * Only available if family255 feature has been enabled.
      */
     Reserved {
         /// The number of channels.

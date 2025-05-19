@@ -22,6 +22,7 @@
  * - Parsing of [RFC8486](https://datatracker.ietf.org/doc/html/rfc8486) family channel mappings is not supported.
  */
 
+#![cfg_attr(docsrs, feature(doc_cfg))]
 #![cfg_attr(not(test), no_std)]
 #![deny(missing_docs)]
 

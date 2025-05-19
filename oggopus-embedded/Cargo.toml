@@ -18,4 +18,5 @@ nom = { version = "8", default-features = false }
 [package.metadata.docs.rs]
 all-features = true
 default-target = "thumbv6m-none-eabi"
+rustdoc-args = ["--cfg", "docsrs"]
 targets = ["thumbv6m-none-eabi", "x86_64-unknown-linux-gnu"]
