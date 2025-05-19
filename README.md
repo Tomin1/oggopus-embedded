@@ -1,8 +1,9 @@
 Oggopus embedded
 ================
 This is parser for Ogg files containing Opus audio with strong focus on
-embedded systems, and also bindings for libopus Opus decoder. Those can be used
-independently, and they are both no-std and no-alloc compatible.
+embedded systems, and also bindings for [libopus](https://github.com/xiph/opus)
+Opus decoder. Those can be used independently, and they are both no_std and
+no_alloc compatible.
 
 Note that this code was created for my personal hobby project where I needed to
 store some short Opus encoded audio on flash in an embedded system. It is not
@@ -26,7 +27,8 @@ lots of other implementations.
 Opus decoder
 ------------
 See opus-embedded directory for libopus abstractions for decoding Opus. The
-build links libopus statically and is no-std on targets without std library.
+build links libopus statically and is no_std and no_alloc on targets without
+std library.
 
 Example player
 --------------

@@ -3,10 +3,12 @@ Ogg and opus header parsing
 This can parse Ogg files as specified by
 [RFC3533](https://datatracker.ietf.org/doc/html/rfc3533) and
 [RFC7845](https://datatracker.ietf.org/doc/html/rfc7845) but only if they
-contain only Opus headers and data.
+contain only Opus headers and data. This crate is no_std and no_alloc.
 
 If you need a more complete Ogg parser, you should look elsewhere. There are
 lots of other implementations.
+
+[Crates.io link](https://crates.io/crates/oggopus-embedded).
 
 Limitations
 -----------

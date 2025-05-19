@@ -1,13 +1,17 @@
 libopus bindings for decoding
 =============================
-This is libopus bindings for decoding Opus. The build links libopus statically
-and is no-std on targets without std library.
+This is [libopus](https://github.com/xiph/opus) bindings for decoding Opus. The
+build links libopus statically and is no_std and no_alloc on targets without
+std library.
 
 The build for ARM has flags set for Cortex-M0+. Other microcontrollers could be
-supported better with some work.
+supported better with some work. Uses libopus's autotools build system as that
+seems to work well for cross compiling currently.
 
 Note that the code might not work on some platforms if OpusDecoder size differs.
 Please file issue tickets when you see size mismatches.
+
+[Crates.io link](https://crates.io/crates/opus-embedded-sys).
 
 Features
 --------
