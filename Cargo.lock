@@ -674,7 +674,7 @@ checksum = "877a4ace8713b0bcf2a4e7eec82529c029f1d0619886d18145fea96c3ffe5c0f"
 
 [[package]]
 name = "example-linux"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "alsa",
  "oggopus-embedded",
@@ -683,7 +683,7 @@ dependencies = [
 
 [[package]]
 name = "example-rp2040"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "cortex-m-rt",
  "defmt 1.0.1",
@@ -1017,7 +1017,7 @@ checksum = "6aa2c4e539b869820a2b82e1aef6ff40aa85e65decdd5185e83fb4b1249cd00f"
 
 [[package]]
 name = "oggopus-embedded"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "bitflags 2.9.0",
  "nom 8.0.0",
@@ -1025,7 +1025,7 @@ dependencies = [
 
 [[package]]
 name = "opus-embedded"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "az",
  "num_enum",
@@ -1034,7 +1034,7 @@ dependencies = [
 
 [[package]]
 name = "opus-embedded-sys"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "autotools",
  "bindgen",
