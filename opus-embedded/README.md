@@ -10,7 +10,12 @@ supported better with some work.
 Note that the code might not work on some platforms if Decoder size differs.
 Please file issue tickets when you see size mismatches.
 
-[Crates.io link](https://crates.io/crates/opus-embedded).
+[![Crates.io][cratesio-version]][cratesio-link]
+[![BSD-3-Clause licensed][cratesio-license]](COPYING)
+
+[cratesio-version]: https://img.shields.io/crates/v/opus-embedded
+[cratesio-license]: https://img.shields.io/crates/l/opus-embedded
+[cratesio-link]: https://crates.io/crates/opus-embedded
 
 Features
 --------

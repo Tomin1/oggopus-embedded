@@ -8,7 +8,13 @@ contain only Opus headers and data. This crate is no_std and no_alloc.
 If you need a more complete Ogg parser, you should look elsewhere. There are
 lots of other implementations.
 
-[Crates.io link](https://crates.io/crates/oggopus-embedded).
+[![Crates.io][cratesio-version]][cratesio-link]
+[![BSD-3-Clause licensed][cratesio-license]](COPYING)
+
+[cratesio-version]: https://img.shields.io/crates/v/oggopus-embedded
+[cratesio-license]: https://img.shields.io/crates/l/oggopus-embedded
+[cratesio-link]: https://crates.io/crates/oggopus-embedded
+
 
 Limitations
 -----------
