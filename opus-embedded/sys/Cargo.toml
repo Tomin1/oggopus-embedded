@@ -7,6 +7,7 @@ categories = ["embedded", "external-ffi-bindings", "no-std::no-alloc"]
 version = "0.1.2"
 license = "BSD-3-Clause"
 edition = "2021"
+rust-version = "1.85.1"
 
 [features]
 default = ["optimize_libopus"]
