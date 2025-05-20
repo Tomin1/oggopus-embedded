@@ -1,6 +1,7 @@
 [workspace]
 resolver = "2"
 members = ["oggopus-embedded", "opus-embedded", "opus-embedded/sys", "example-linux", "example-rp2040"]
+default-members = ["oggopus-embedded", "opus-embedded", "opus-embedded/sys"]
 
 [profile.release]
 opt-level = 3
