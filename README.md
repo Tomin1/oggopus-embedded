@@ -17,27 +17,30 @@ See the various COPYING files for license information.
 
 Ogg and opus header parsing
 ---------------------------
-See oggopus-embedded directory for Ogg parsing implementation. It can parse Ogg
-files as specified by RFC3533 and RFC7845 but only if they contain only Opus
-headers and data.
+See [oggopus-embedded directory](oggopus-embedded) for Ogg parsing
+implementation. It can parse Ogg files as specified by [RFC3533] and [RFC7845]
+but only if they contain only Opus headers and data.
+
+[RFC3533]: https://datatracker.ietf.org/doc/html/rfc3533
+[RFC7845]: https://datatracker.ietf.org/doc/html/rfc7845
 
 If you need a more complete Ogg parser, you should look elsewhere. There are
 lots of other implementations.
 
 Opus decoder
 ------------
-See opus-embedded directory for libopus abstractions for decoding Opus. The
-build links libopus statically and is no_std and no_alloc on targets without
-std library.
+See [opus-embedded directory](opus-embedded) for libopus abstractions for
+decoding Opus. The build links libopus statically and is no_std and no_alloc on
+targets without std library.
 
 Example player
 --------------
-There is a small example player in example-linux directory. It is dumbed down
-to a fault but it can demonstrate that the libraries work.
+There is a small example player in [example-linux directory](example-linux). It
+is dumbed down to a fault but it can demonstrate that the libraries work.
 
 rp2040 example
 --------------
-There is a small example for rp2040 microcontroller found in Raspberry Pico. It
-uses I2S to play (mono) audio samples and also serves as a benchmark for Opus
-decoding. You must build it inside the directory, not in the workspace
-directory, otherwise cargo will not see the required configuration.
+There is [a small example for rp2040 microcontroller](example-rp2040) found in
+Raspberry Pico. It uses I2S to play (mono) audio samples and also serves as a
+benchmark for Opus decoding. You must build it inside the directory, not in the
+workspace directory, otherwise cargo will not see the required configuration.

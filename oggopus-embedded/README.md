@@ -1,20 +1,23 @@
 Ogg and opus header parsing
 ===========================
-This can parse Ogg files as specified by
-[RFC3533](https://datatracker.ietf.org/doc/html/rfc3533) and
-[RFC7845](https://datatracker.ietf.org/doc/html/rfc7845) but only if they
-contain only Opus headers and data. This crate is no_std and no_alloc.
+This can parse Ogg files as specified by [RFC3533] and [RFC7845] but only if
+they contain only Opus headers and data. This crate is no_std and no_alloc.
+
+[RFC3533]: https://datatracker.ietf.org/doc/html/rfc3533
+[RFC7845]: https://datatracker.ietf.org/doc/html/rfc7845
 
 If you need a more complete Ogg parser, you should look elsewhere. There are
 lots of other implementations.
 
 [![Crates.io][cratesio-version]][cratesio-link]
 [![BSD-3-Clause licensed][cratesio-license]](COPYING)
+[![docs.rs][docsrs-badge]][docsrs-link]
 
 [cratesio-version]: https://img.shields.io/crates/v/oggopus-embedded
 [cratesio-license]: https://img.shields.io/crates/l/oggopus-embedded
 [cratesio-link]: https://crates.io/crates/oggopus-embedded
-
+[docsrs-badge]: https://img.shields.io/docsrs/oggopus-embedded
+[docsrs-link]: https://docs.rs/oggopus-embedded/latest/oggopus_embedded/
 
 Limitations
 -----------
@@ -51,5 +54,5 @@ something.
 
 License
 -------
-This crate is BSD licensed. See COPYING for more information. Dependency crates
-have their own licenses.
+This crate is BSD licensed. See [COPYING](COPYING) for more information.
+Dependency crates have their own licenses.

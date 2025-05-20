@@ -17,5 +17,5 @@ when creating mono or stereo audio file.
 
 License
 -------
-This example is BSD licensed. See COPYING for more information. Dependency
-crates have their own licenses.
+This example is BSD licensed. See [COPYING](COPYING) for more information.
+Dependency crates have their own licenses.
